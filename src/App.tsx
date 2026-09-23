@@ -6,6 +6,7 @@ import {
   Excalidraw,
   MIME_TYPES,
   WelcomeScreen,
+  loadLibraryFromBlob,
 } from "@excalidraw/excalidraw";
 import {
   startTransition,
@@ -1197,12 +1198,36 @@ function App() {
       let mergedLibraries = 0;
       let insertedImages = 0;
 
+      const invalidFiles = new Set<ImportFile>();
+
       for (const sceneFile of plan.scenes) {
+        try {
+          await loadSceneFromBlobData(sceneFile.blob, libraryItemsRef.current);
+        } catch {
+          invalidFiles.add(sceneFile);
+        }
+      }
+
+      for (const libraryFile of plan.libraries) {
+        try {
+          await loadLibraryFromBlob(libraryFile.blob);
+        } catch {
+          invalidFiles.add(libraryFile);
+        }
+      }
+
+      for (const sceneFile of plan.scenes) {
+        if (invalidFiles.has(sceneFile)) {
+          continue;
+        }
         await saveImportedSceneFile(sceneFile.name, await sceneFile.blob.text());
         copiedScenes += 1;
       }
 
       for (const libraryFile of plan.libraries) {
+        if (invalidFiles.has(libraryFile)) {
+          continue;
+        }
         const nextLibraryItems = (await currentApi.updateLibrary({
           libraryItems: libraryFile.blob,
           merge: true,
@@ -1225,7 +1250,8 @@ function App() {
           : "",
         insertedImages ? `${insertedImages} image${insertedImages === 1 ? "" : "s"}` : "",
       ].filter(Boolean);
-      const skipped = plan.unsupported.length + plan.oversized.length;
+      const skipped =
+        plan.unsupported.length + plan.oversized.length + invalidFiles.size;
 
       if (summary.length) {
         showToast(
