@@ -27,6 +27,11 @@ import { isNativePlatform } from "./lib/capacitor";
 import type { ExportFormat } from "./lib/exports";
 import type { ImportFile, ImportPlan } from "./lib/imports";
 import {
+  MAX_IMPORT_FILE_BYTES,
+  MAX_IMPORT_FILE_COUNT,
+  MAX_IMPORT_TOTAL_BYTES,
+} from "./lib/limits";
+import {
   A4_PAGE_SIZE,
   DEFAULT_PAGE_SETTINGS,
   getPageTemplateOption,
@@ -117,7 +122,6 @@ import type {
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 const SNAPSHOT_INTERVAL_MS = 3 * 60 * 1000;
-const MAX_PENDING_OPEN_BYTES = 8 * 1024 * 1024;
 const AUTOSAVE_WARNING_INTERVAL_MS = 30 * 1000;
 const STRAIGHTEN_HOLD_MS = 240;
 const STRAIGHTEN_MOVE_THRESHOLD = 5;
@@ -458,7 +462,7 @@ const pendingOpenToBlob = (
 
   if (pendingOpen.encoding === "base64") {
     const estimatedBytes = Math.floor((pendingOpen.data.length * 3) / 4);
-    if (estimatedBytes > MAX_PENDING_OPEN_BYTES) {
+    if (estimatedBytes > MAX_IMPORT_FILE_BYTES) {
       throw new Error("Incoming file exceeds size limit");
     }
 
@@ -468,7 +472,7 @@ const pendingOpenToBlob = (
     return new Blob([bytes], { type: mimeType });
   }
 
-  if (new TextEncoder().encode(pendingOpen.data).byteLength > MAX_PENDING_OPEN_BYTES) {
+  if (new TextEncoder().encode(pendingOpen.data).byteLength > MAX_IMPORT_FILE_BYTES) {
     throw new Error("Incoming file exceeds size limit");
   }
 
@@ -556,10 +560,18 @@ const isSceneImport = (file: Pick<ImportFile, "name" | "mimeType">) => {
   );
 };
 
-const createImportPlan = (importFiles: readonly ImportFile[]): ImportPlan =>
-  importFiles.reduce<ImportPlan>(
-    (plan, file) => {
-      if (file.size > MAX_PENDING_OPEN_BYTES) {
+const createImportPlan = (importFiles: readonly ImportFile[]): ImportPlan => {
+  let plannedBytes = 0;
+
+  return importFiles.reduce<ImportPlan>(
+    (plan, file, index) => {
+      plannedBytes += file.size;
+
+      if (
+        file.size > MAX_IMPORT_FILE_BYTES ||
+        index >= MAX_IMPORT_FILE_COUNT ||
+        plannedBytes > MAX_IMPORT_TOTAL_BYTES
+      ) {
         plan.oversized.push(file);
         return plan;
       }
@@ -584,6 +596,7 @@ const createImportPlan = (importFiles: readonly ImportFile[]): ImportPlan =>
       oversized: [],
     },
   );
+};
 
 const supportedImportCount = (plan: ImportPlan) =>
   plan.scenes.length + plan.libraries.length + plan.images.length;
@@ -606,7 +619,7 @@ const pendingOpenFileToImportFile = (file: PendingOpenFile): ImportFile => {
     : MIME_TYPES.excalidraw;
   const estimatedSize = estimatePendingOpenSize(file);
 
-  if (estimatedSize > MAX_PENDING_OPEN_BYTES) {
+  if (estimatedSize > MAX_IMPORT_FILE_BYTES) {
     return {
       name: file.name,
       mimeType: file.mimeType || fallbackMimeType,
