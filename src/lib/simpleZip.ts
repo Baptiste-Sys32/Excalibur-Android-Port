@@ -11,6 +11,11 @@ export type ZipEntry = {
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+const MAX_ZIP_ENTRIES = 2000;
+const MAX_ZIP_ENTRY_BYTES = 64 * 1024 * 1024;
+const MAX_ZIP_TOTAL_BYTES = 256 * 1024 * 1024;
+const MAX_ZIP_NAME_BYTES = 240;
+
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
 
@@ -158,6 +163,10 @@ const findEndOfCentralDirectory = (view: DataView) => {
 };
 
 export const parseStoreZip = async (file: Blob): Promise<ZipEntry[]> => {
+  if (file.size > MAX_ZIP_TOTAL_BYTES) {
+    throw new Error("Backup zip exceeds size limit");
+  }
+
   const bytes = new Uint8Array(await file.arrayBuffer());
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const endOffset = findEndOfCentralDirectory(view);
@@ -167,33 +176,92 @@ export const parseStoreZip = async (file: Blob): Promise<ZipEntry[]> => {
   }
 
   const entryCount = view.getUint16(endOffset + 10, true);
-  let centralOffset = view.getUint32(endOffset + 16, true);
+  const centralSize = view.getUint32(endOffset + 12, true);
+  const centralOffset = view.getUint32(endOffset + 16, true);
+
+  if (entryCount > MAX_ZIP_ENTRIES) {
+    throw new Error("Backup zip has too many entries");
+  }
+
+  if (centralOffset + centralSize > bytes.length) {
+    throw new Error("Backup zip central directory is invalid");
+  }
+
   const entries: ZipEntry[] = [];
+  const seenNames = new Set<string>();
+  let offset = centralOffset;
+  let totalSize = 0;
 
   for (let index = 0; index < entryCount; index += 1) {
-    if (view.getUint32(centralOffset, true) !== 0x02014b50) {
+    if (offset + 46 > bytes.length) {
       throw new Error("Backup zip central directory is invalid");
     }
 
-    const method = view.getUint16(centralOffset + 10, true);
+    if (view.getUint32(offset, true) !== 0x02014b50) {
+      throw new Error("Backup zip central directory is invalid");
+    }
+
+    const flags = view.getUint16(offset + 8, true);
+    if (flags & 0x0001) {
+      throw new Error("Backup zip uses unsupported encryption");
+    }
+
+    const method = view.getUint16(offset + 10, true);
     if (method !== 0) {
       throw new Error("Backup zip uses unsupported compression");
     }
 
-    const compressedSize = view.getUint32(centralOffset + 20, true);
-    const uncompressedSize = view.getUint32(centralOffset + 24, true);
-    const nameLength = view.getUint16(centralOffset + 28, true);
-    const extraLength = view.getUint16(centralOffset + 30, true);
-    const commentLength = view.getUint16(centralOffset + 32, true);
-    const localHeaderOffset = view.getUint32(centralOffset + 42, true);
-    const nameBytes = bytes.subarray(
-      centralOffset + 46,
-      centralOffset + 46 + nameLength,
-    );
-    const name = textDecoder.decode(nameBytes);
+    const expectedCrc = view.getUint32(offset + 16, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const uncompressedSize = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+
+    if (
+      nameLength > MAX_ZIP_NAME_BYTES ||
+      offset + 46 + nameLength + extraLength + commentLength > bytes.length
+    ) {
+      throw new Error("Backup zip entry header is invalid");
+    }
+
+    const nameBytes = bytes.subarray(offset + 46, offset + 46 + nameLength);
+    const rawName = textDecoder.decode(nameBytes);
+    const name = normalizeZipName(rawName);
+
+    if (
+      !name ||
+      name.includes("\\") ||
+      name.startsWith("/") ||
+      name
+        .replace(/\/$/, "")
+        .split("/")
+        .some((part) => part === ".." || part === "")
+    ) {
+      throw new Error("Backup zip entry name is invalid");
+    }
+
+    if (seenNames.has(name)) {
+      throw new Error("Backup zip has duplicate entries");
+    }
+    seenNames.add(name);
 
     if (compressedSize !== uncompressedSize) {
       throw new Error("Backup zip entry sizes are inconsistent");
+    }
+
+    if (uncompressedSize > MAX_ZIP_ENTRY_BYTES) {
+      throw new Error("Backup zip entry exceeds size limit");
+    }
+
+    totalSize += uncompressedSize;
+    if (totalSize > MAX_ZIP_TOTAL_BYTES) {
+      throw new Error("Backup zip exceeds size limit");
+    }
+
+    if (localHeaderOffset + 30 > bytes.length) {
+      throw new Error("Backup zip local header is invalid");
     }
 
     if (view.getUint32(localHeaderOffset, true) !== 0x04034b50) {
@@ -203,13 +271,22 @@ export const parseStoreZip = async (file: Blob): Promise<ZipEntry[]> => {
     const localNameLength = view.getUint16(localHeaderOffset + 26, true);
     const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
     const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
+
+    if (dataOffset + uncompressedSize > bytes.length) {
+      throw new Error("Backup zip entry data is invalid");
+    }
+
     const data = bytes.slice(dataOffset, dataOffset + uncompressedSize);
+
+    if (crc32(data) !== expectedCrc) {
+      throw new Error("Backup zip entry failed integrity check");
+    }
 
     if (!name.endsWith("/")) {
       entries.push({ name, data });
     }
 
-    centralOffset += 46 + nameLength + extraLength + commentLength;
+    offset += 46 + nameLength + extraLength + commentLength;
   }
 
   return entries;
