@@ -456,6 +456,57 @@ const createStraightenedFreeDrawElement = (
   };
 };
 
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+
+const decodeBase64ToBytes = (data: string) => {
+  if (!BASE64_PATTERN.test(data) || data.length % 4 !== 0) {
+    throw new Error("Incoming file is not valid base64");
+  }
+
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  const bytes = new Uint8Array(Math.floor((data.length * 3) / 4) - padding);
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let offset = 0;
+
+  for (let index = 0; index + 4 <= data.length; index += 4) {
+    const first = alphabet.indexOf(data[index]);
+    const second = alphabet.indexOf(data[index + 1]);
+    const third = alphabet.indexOf(data[index + 2]);
+    const fourth = alphabet.indexOf(data[index + 3]);
+
+    if (
+      first < 0 ||
+      second < 0 ||
+      (third < 0 && data[index + 2] !== "=") ||
+      (fourth < 0 && data[index + 3] !== "=") ||
+      (data[index + 2] === "=" && data[index + 3] !== "=")
+    ) {
+      throw new Error("Incoming file is not valid base64");
+    }
+
+    const triplet =
+      (first << 18) |
+      (second << 12) |
+      (Math.max(third, 0) << 6) |
+      Math.max(fourth, 0);
+    bytes[offset] = (triplet >> 16) & 0xff;
+    offset += 1;
+
+    if (data[index + 2] !== "=") {
+      bytes[offset] = (triplet >> 8) & 0xff;
+      offset += 1;
+    }
+
+    if (data[index + 3] !== "=") {
+      bytes[offset] = triplet & 0xff;
+      offset += 1;
+    }
+  }
+
+  return bytes;
+};
+
 const pendingOpenToBlob = (
   pendingOpen: Pick<PendingOpenPayload, "data" | "encoding" | "mimeType" | "name">,
   fallbackMimeType: string,
@@ -468,9 +519,7 @@ const pendingOpenToBlob = (
       throw new Error("Incoming file exceeds size limit");
     }
 
-    const bytes = Uint8Array.from(atob(pendingOpen.data), (char) =>
-      char.charCodeAt(0),
-    );
+    const bytes = decodeBase64ToBytes(pendingOpen.data);
     return new Blob([bytes], { type: mimeType });
   }
 
@@ -633,9 +682,12 @@ const estimatePendingOpenSize = (file: PendingOpenFile) => {
     return file.size;
   }
 
-  return file.encoding === "base64"
-    ? Math.floor((file.data.length * 3) / 4)
-    : new TextEncoder().encode(file.data).byteLength;
+  if (file.encoding !== "base64") {
+    return new TextEncoder().encode(file.data).byteLength;
+  }
+
+  const padding = file.data.endsWith("==") ? 2 : file.data.endsWith("=") ? 1 : 0;
+  return Math.floor((file.data.length * 3) / 4) - padding;
 };
 
 const pendingOpenFileToImportFile = (file: PendingOpenFile): ImportFile => {
