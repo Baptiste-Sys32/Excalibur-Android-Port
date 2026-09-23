@@ -125,38 +125,8 @@ import type {
 const AUTOSAVE_DEBOUNCE_MS = 700;
 const SNAPSHOT_INTERVAL_MS = 3 * 60 * 1000;
 const AUTOSAVE_WARNING_INTERVAL_MS = 30 * 1000;
-const STRAIGHTEN_HOLD_MS = 240;
-const STRAIGHTEN_MOVE_THRESHOLD = 5;
-const STRAIGHTEN_MIN_SEGMENT = 12;
 const A4_MARGIN_GUARD_EPSILON = 0.5;
 const A4_MARGIN_TOAST_INTERVAL_MS = 1800;
-
-type ScenePoint = {
-  x: number;
-  y: number;
-};
-
-type StraightenSession = {
-  isActive: boolean;
-  isLocked: boolean;
-  elementId: string | null;
-  anchor: ScenePoint | null;
-  direction: ScenePoint | null;
-  maxDistance: number;
-  lastPointer: ScenePoint | null;
-  holdTimer: number | null;
-};
-
-const EMPTY_STRAIGHTEN_SESSION: StraightenSession = {
-  isActive: false,
-  isLocked: false,
-  elementId: null,
-  anchor: null,
-  direction: null,
-  maxDistance: 0,
-  lastPointer: null,
-  holdTimer: null,
-};
 
 type ExportScenePayload = {
   elements: readonly OrderedExcalidrawElement[];
@@ -394,66 +364,6 @@ const getA4MarginGuardedElements = (
   }
 
   return changed ? nextElements : null;
-};
-
-const distanceBetweenPoints = (first: ScenePoint, second: ScenePoint) =>
-  Math.hypot(second.x - first.x, second.y - first.y);
-
-const asFreeDrawElement = (
-  element: OrderedExcalidrawElement | undefined,
-): ExcalidrawFreeDrawElement | null => {
-  if (!element || element.isDeleted || element.type !== "freedraw") {
-    return null;
-  }
-
-  return element as ExcalidrawFreeDrawElement;
-};
-
-const findLatestFreeDrawElement = (
-  elements: readonly OrderedExcalidrawElement[],
-) => {
-  for (let index = elements.length - 1; index >= 0; index -= 1) {
-    const freeDrawElement = asFreeDrawElement(elements[index]);
-    if (freeDrawElement) {
-      return freeDrawElement;
-    }
-  }
-
-  return null;
-};
-
-const toWorldPoint = (
-  element: ExcalidrawFreeDrawElement,
-  point: readonly [number, number],
-): ScenePoint => ({
-  x: element.x + point[0],
-  y: element.y + point[1],
-});
-
-const createStraightenedFreeDrawElement = (
-  element: ExcalidrawFreeDrawElement,
-  anchor: ScenePoint,
-  end: ScenePoint,
-): ExcalidrawFreeDrawElement => {
-  const minX = Math.min(anchor.x, end.x);
-  const minY = Math.min(anchor.y, end.y);
-  const startPoint = [anchor.x - minX, anchor.y - minY] as ExcalidrawFreeDrawElement["points"][number];
-  const endPoint = [end.x - minX, end.y - minY] as ExcalidrawFreeDrawElement["points"][number];
-  const firstPressure = element.pressures[0] ?? 0.5;
-  const lastPressure = element.pressures[element.pressures.length - 1] ?? firstPressure;
-
-  return {
-    ...element,
-    x: minX,
-    y: minY,
-    width: Math.abs(end.x - anchor.x),
-    height: Math.abs(end.y - anchor.y),
-    points: [startPoint, endPoint],
-    pressures: [firstPressure, lastPressure],
-    updated: Date.now(),
-    version: element.version + 1,
-    versionNonce: Math.trunc(Math.random() * 2147483647),
-  };
 };
 
 const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -812,10 +722,6 @@ function App() {
   );
   const suppressA4MarginGuardRef = useRef(false);
   const lastA4MarginToastAtRef = useRef(0);
-  const straightenSessionRef = useRef<StraightenSession>({
-    ...EMPTY_STRAIGHTEN_SESSION,
-  });
-  const suppressStraightenPassRef = useRef(false);
   const lastSnapshotAtRef = useRef(0);
   const lastSnapshotSignatureRef = useRef("");
   const forcedEraserToolRef = useRef<AppState["activeTool"] | null>(null);
@@ -883,88 +789,6 @@ function App() {
     lastA4MarginToastAtRef.current = now;
     showToast("A4 margins are locked");
   }, [showToast]);
-
-  const resetStraightenSession = useCallback(() => {
-    const currentSession = straightenSessionRef.current;
-    if (currentSession.holdTimer) {
-      window.clearTimeout(currentSession.holdTimer);
-    }
-
-    straightenSessionRef.current = {
-      ...EMPTY_STRAIGHTEN_SESSION,
-    };
-  }, []);
-
-  const scheduleStraightenCheck = useCallback(() => {
-    const session = straightenSessionRef.current;
-    if (!session.isActive || session.isLocked) {
-      return;
-    }
-
-    if (session.holdTimer) {
-      window.clearTimeout(session.holdTimer);
-    }
-
-    session.holdTimer = window.setTimeout(() => {
-      const liveSession = straightenSessionRef.current;
-      const payload = latestSceneRef.current;
-      const currentApi = apiRef.current;
-
-      if (!liveSession.isActive || liveSession.isLocked || !liveSession.elementId) {
-        return;
-      }
-
-      if (!payload || !currentApi) {
-        return;
-      }
-
-      const activeElement = asFreeDrawElement(
-        payload.elements.find((element) => element.id === liveSession.elementId),
-      );
-
-      if (!activeElement || activeElement.points.length < 2) {
-        return;
-      }
-
-      const anchor = toWorldPoint(activeElement, activeElement.points[0]);
-      const rawEnd = toWorldPoint(
-        activeElement,
-        activeElement.points[activeElement.points.length - 1],
-      );
-
-      const deltaX = rawEnd.x - anchor.x;
-      const deltaY = rawEnd.y - anchor.y;
-      const distance = Math.hypot(deltaX, deltaY);
-
-      if (distance < STRAIGHTEN_MIN_SEGMENT) {
-        return;
-      }
-
-      liveSession.isLocked = true;
-      liveSession.anchor = anchor;
-      liveSession.direction = {
-        x: deltaX / distance,
-        y: deltaY / distance,
-      };
-      liveSession.maxDistance = distance;
-
-      const nextElement = createStraightenedFreeDrawElement(
-        activeElement,
-        anchor,
-        rawEnd,
-      );
-
-      suppressStraightenPassRef.current = true;
-      currentApi.updateScene({
-        elements: payload.elements.map((element) =>
-          element.id === activeElement.id
-            ? (nextElement as OrderedExcalidrawElement)
-            : element,
-        ),
-        captureUpdate: CaptureUpdateAction.NEVER,
-      });
-    }, STRAIGHTEN_HOLD_MS);
-  }, []);
 
   const runPersistCurrentScene = useCallback(
     async (forceSnapshot: boolean) => {
@@ -1634,33 +1458,6 @@ function App() {
     [showA4MarginLockedToast],
   );
 
-  const handlePointerUpdate = useCallback(
-    (payload: {
-      pointer: { x: number; y: number; tool: "pointer" | "laser" };
-      button: "down" | "up";
-    }) => {
-      const session = straightenSessionRef.current;
-      if (!session.isActive || session.isLocked || payload.button !== "down") {
-        return;
-      }
-
-      const nextPointer = {
-        x: payload.pointer.x,
-        y: payload.pointer.y,
-      };
-
-      if (
-        !session.lastPointer ||
-        distanceBetweenPoints(session.lastPointer, nextPointer) >=
-          STRAIGHTEN_MOVE_THRESHOLD
-      ) {
-        session.lastPointer = nextPointer;
-        scheduleStraightenCheck();
-      }
-    },
-    [scheduleStraightenCheck],
-  );
-
   const handleChange = useCallback(
     (
       elements: readonly OrderedExcalidrawElement[],
@@ -1698,75 +1495,6 @@ function App() {
         appState,
         files,
       };
-
-      if (suppressStraightenPassRef.current) {
-        suppressStraightenPassRef.current = false;
-      } else {
-        const session = straightenSessionRef.current;
-        if (session.isActive) {
-          const activeElement = session.elementId
-            ? asFreeDrawElement(
-                elements.find((element) => element.id === session.elementId),
-              )
-            : findLatestFreeDrawElement(elements);
-
-          if (activeElement) {
-            session.elementId = activeElement.id;
-
-            if (
-              session.isLocked &&
-              session.anchor &&
-              session.direction &&
-              activeElement.points.length > 0
-            ) {
-              const rawEnd = toWorldPoint(
-                activeElement,
-                activeElement.points[activeElement.points.length - 1],
-              );
-              const projectedDistance =
-                (rawEnd.x - session.anchor.x) * session.direction.x +
-                (rawEnd.y - session.anchor.y) * session.direction.y;
-
-              session.maxDistance = Math.max(
-                session.maxDistance,
-                projectedDistance,
-                STRAIGHTEN_MIN_SEGMENT,
-              );
-
-              const straightEnd: ScenePoint = {
-                x: session.anchor.x + session.direction.x * session.maxDistance,
-                y: session.anchor.y + session.direction.y * session.maxDistance,
-              };
-
-              const currentEnd = toWorldPoint(
-                activeElement,
-                activeElement.points[activeElement.points.length - 1],
-              );
-
-              if (
-                activeElement.points.length !== 2 ||
-                distanceBetweenPoints(currentEnd, straightEnd) > 0.75
-              ) {
-                const nextElement = createStraightenedFreeDrawElement(
-                  activeElement,
-                  session.anchor,
-                  straightEnd,
-                );
-
-                suppressStraightenPassRef.current = true;
-                apiRef.current?.updateScene({
-                  elements: elements.map((element) =>
-                    element.id === activeElement.id
-                      ? (nextElement as OrderedExcalidrawElement)
-                      : element,
-                  ),
-                  captureUpdate: CaptureUpdateAction.NEVER,
-                });
-              }
-            }
-          }
-        }
-      }
 
       const hasMeaningfulScene =
         elements.some((element) => !element.isDeleted) ||
@@ -1948,27 +1676,6 @@ function App() {
       return;
     }
 
-    const unsubscribePointerDown = api.onPointerDown(
-      (activeTool, pointerDownState) => {
-        if (activeTool.type !== "freedraw") {
-          resetStraightenSession();
-          return;
-        }
-
-        resetStraightenSession();
-        straightenSessionRef.current = {
-          ...EMPTY_STRAIGHTEN_SESSION,
-          isActive: true,
-          lastPointer: {
-            x: pointerDownState.origin.x,
-            y: pointerDownState.origin.y,
-          },
-        };
-
-        scheduleStraightenCheck();
-      },
-    );
-
     const unsubscribePointerUp = api.onPointerUp(() => {
       if (a4MarginGuardTimerRef.current) {
         window.clearTimeout(a4MarginGuardTimerRef.current);
@@ -1990,19 +1697,16 @@ function App() {
           );
         }, 0);
       }
-      resetStraightenSession();
     });
 
     return () => {
-      unsubscribePointerDown();
       unsubscribePointerUp();
       if (a4MarginGuardTimerRef.current) {
         window.clearTimeout(a4MarginGuardTimerRef.current);
         a4MarginGuardTimerRef.current = null;
       }
-      resetStraightenSession();
     };
-  }, [api, applyA4MarginGuard, resetStraightenSession, scheduleStraightenCheck]);
+  }, [api, applyA4MarginGuard]);
 
   useEffect(() => {
     const listenerPromise = AppPlugin.addListener("appStateChange", ({ isActive }) => {
@@ -2953,7 +2657,6 @@ function App() {
         initialData={initialData}
         onExcalidrawAPI={setApi}
         onChange={handleChange}
-        onPointerUpdate={handlePointerUpdate}
         onLibraryChange={handleLibraryChange}
         autoFocus
         handleKeyboardGlobally
