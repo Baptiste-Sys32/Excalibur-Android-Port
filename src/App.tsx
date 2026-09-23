@@ -28,6 +28,7 @@ import { isNativePlatform } from "./lib/capacitor";
 import type { ExportFormat } from "./lib/exports";
 import type { ImportFile, ImportPlan } from "./lib/imports";
 import {
+  MAX_IMAGE_PIXELS,
   MAX_IMPORT_FILE_BYTES,
   MAX_IMPORT_FILE_COUNT,
   MAX_IMPORT_TOTAL_BYTES,
@@ -522,15 +523,19 @@ const blobToDataUrl = async (blob: Blob) =>
   });
 
 const loadImageDimensions = async (dataUrl: DataURL) =>
-  new Promise<{ width: number; height: number }>((resolve) => {
+  new Promise<{ width: number; height: number }>((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error("Could not decode image dimensions"));
+        return;
+      }
       resolve({
-        width: image.naturalWidth || 640,
-        height: image.naturalHeight || 480,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
       });
     };
-    image.onerror = () => resolve({ width: 640, height: 480 });
+    image.onerror = () => reject(new Error("Could not decode image"));
     image.src = dataUrl;
   });
 
@@ -547,6 +552,27 @@ const isImageImport = (file: Pick<ImportFile, "name" | "mimeType">) => {
     mimeType.startsWith("image/") ||
     /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(name)
   );
+};
+
+const isSvgImport = (file: Pick<ImportFile, "name" | "mimeType">) => {
+  const name = file.name.toLowerCase();
+  const mimeType = file.mimeType.toLowerCase();
+  return mimeType.includes("svg") || name.endsWith(".svg");
+};
+
+const UNSAFE_SVG_PATTERNS = [
+  /<script/i,
+  /<foreignobject/i,
+  /<iframe/i,
+  /<embed/i,
+  /<object/i,
+  /javascript:/i,
+  /\son[a-z]+\s*=/i,
+];
+
+const hasUnsafeSvgContent = async (blob: Blob) => {
+  const text = await blob.text();
+  return UNSAFE_SVG_PATTERNS.some((pattern) => pattern.test(text));
 };
 
 const isSceneImport = (file: Pick<ImportFile, "name" | "mimeType">) => {
@@ -1120,8 +1146,17 @@ function App() {
       const binaryFiles: BinaryFileData[] = [];
 
       for (const [index, file] of imageFiles.entries()) {
-        const dataURL = await blobToDataUrl(file.blob);
-        const dimensions = await loadImageDimensions(dataURL);
+        try {
+          if (isSvgImport(file) && (await hasUnsafeSvgContent(file.blob))) {
+            continue;
+          }
+
+          const dataURL = await blobToDataUrl(file.blob);
+          const dimensions = await loadImageDimensions(dataURL);
+
+          if (dimensions.width * dimensions.height > MAX_IMAGE_PIXELS) {
+            continue;
+          }
         const scale = Math.min(1, 640 / Math.max(dimensions.width, dimensions.height));
         const width = Math.max(1, Math.round(dimensions.width * scale));
         const height = Math.max(1, Math.round(dimensions.height * scale));
@@ -1147,6 +1182,9 @@ function App() {
             status: "saved",
           }),
         );
+        } catch {
+          continue;
+        }
       }
 
       currentApi.addFiles(binaryFiles);

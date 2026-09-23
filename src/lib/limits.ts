@@ -6,3 +6,4 @@
 export const MAX_IMPORT_FILE_BYTES = 8 * 1024 * 1024;
 export const MAX_IMPORT_FILE_COUNT = 32;
 export const MAX_IMPORT_TOTAL_BYTES = 64 * 1024 * 1024;
+export const MAX_IMAGE_PIXELS = 25 * 1000 * 1000;
