@@ -276,6 +276,54 @@ const writeTextFileNative = async (
   await writeBase64FileNative(path, directory, textToBase64(text));
 };
 
+const makeAtomicTempPath = (path: string) =>
+  `${path}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const statNativeFileSize = async (
+  path: string,
+  directory: NativeStorageDirectory,
+) => {
+  const stat = await Filesystem.stat({ path, directory });
+  return stat.size ?? 0;
+};
+
+const writeAtomicTextFileNative = async (
+  path: string,
+  directory: NativeStorageDirectory,
+  text: string,
+) => {
+  const tempPath = makeAtomicTempPath(path);
+  const expectedSize = new TextEncoder().encode(text).byteLength;
+
+  try {
+    await writeBase64FileNative(tempPath, directory, textToBase64(text));
+
+    const tempSize = await statNativeFileSize(tempPath, directory);
+    if (tempSize !== expectedSize) {
+      throw new Error(`Temporary file size mismatch for ${path}`);
+    }
+
+    await Filesystem.rename({
+      from: tempPath,
+      to: path,
+      directory,
+      toDirectory: directory,
+    });
+
+    const finalSize = await statNativeFileSize(path, directory);
+    if (finalSize !== expectedSize) {
+      throw new Error(`Write verification failed for ${path}`);
+    }
+  } catch (error) {
+    await Filesystem.deleteFile({ path: tempPath, directory }).catch(
+      () => undefined,
+    );
+    throw error instanceof Error
+      ? error
+      : new Error(`Atomic write failed for ${path}`);
+  }
+};
+
 const copyLegacyExternalFilesToDocuments = async (directoryPath: string) => {
   try {
     const listing = await Filesystem.readdir({
@@ -537,7 +585,7 @@ const writeDataText = async (path: string, text: string) => {
   }
 
   await ensureDataDirectory(path);
-  await writeTextFileNative(path, Directory.Data, text);
+  await writeAtomicTextFileNative(path, Directory.Data, text);
 };
 
 const removeDataFile = async (path: string) => {
