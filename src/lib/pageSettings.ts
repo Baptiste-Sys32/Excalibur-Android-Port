@@ -82,7 +82,7 @@ export const PAGE_MARGIN_MODE_OPTIONS: readonly PageMarginModeOption[] = [
   {
     id: "locked",
     name: "Locked margins",
-    description: "Grey side margins reject marks outside the A4 page.",
+    description: "Side margins are shaded; marks outside the A4 page are kept.",
   },
   {
     id: "writable",

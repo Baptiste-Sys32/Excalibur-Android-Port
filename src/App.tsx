@@ -34,10 +34,8 @@ import {
   MAX_IMPORT_TOTAL_BYTES,
 } from "./lib/limits";
 import {
-  A4_PAGE_SIZE,
   DEFAULT_PAGE_SETTINGS,
   getPageTemplateOption,
-  isA4MarginLocked,
   isPageTemplateEnabled,
   normalizePageSettings,
   type PageSettings,
@@ -102,7 +100,6 @@ import {
   type SceneSnapshotMeta,
 } from "./lib/persistence";
 import {
-  getCommonBounds,
   newImageElement,
   syncInvalidIndices,
 } from "@excalidraw/element";
@@ -116,7 +113,6 @@ import type {
   LibraryItems,
 } from "@excalidraw/excalidraw/types";
 import type {
-  ExcalidrawFreeDrawElement,
   ExcalidrawImageElement,
   OrderedExcalidrawElement,
   Theme,
@@ -125,8 +121,6 @@ import type {
 const AUTOSAVE_DEBOUNCE_MS = 700;
 const SNAPSHOT_INTERVAL_MS = 3 * 60 * 1000;
 const AUTOSAVE_WARNING_INTERVAL_MS = 30 * 1000;
-const A4_MARGIN_GUARD_EPSILON = 0.5;
-const A4_MARGIN_TOAST_INTERVAL_MS = 1800;
 
 type ExportScenePayload = {
   elements: readonly OrderedExcalidrawElement[];
@@ -140,230 +134,6 @@ type AutosaveHealth = {
   status: AutosaveStatus;
   updatedAt: string | null;
   message?: string;
-};
-
-type FreeDrawSample = {
-  x: number;
-  y: number;
-  pressure: number;
-};
-
-type FreeDrawLocalPoint = ExcalidrawFreeDrawElement["points"][number];
-
-const A4_PAGE_LEFT = 0;
-const A4_PAGE_RIGHT = A4_PAGE_SIZE.width;
-const SEGMENT_CLIP_EPSILON = 0.0001;
-
-const clampA4PageX = (x: number) =>
-  Math.min(A4_PAGE_RIGHT, Math.max(A4_PAGE_LEFT, x));
-
-const getFreeDrawPressure = (
-  element: ExcalidrawFreeDrawElement,
-  index: number,
-) =>
-  element.pressures[index] ??
-  element.pressures[index - 1] ??
-  element.pressures[index + 1] ??
-  0.5;
-
-const sampleFreeDrawAt = (
-  start: FreeDrawSample,
-  end: FreeDrawSample,
-  t: number,
-): FreeDrawSample => ({
-  x: clampA4PageX(start.x + (end.x - start.x) * t),
-  y: start.y + (end.y - start.y) * t,
-  pressure: start.pressure + (end.pressure - start.pressure) * t,
-});
-
-const clipSegmentToA4PageWidth = (
-  start: FreeDrawSample,
-  end: FreeDrawSample,
-) => {
-  const deltaX = end.x - start.x;
-  let startT = 0;
-  let endT = 1;
-
-  if (Math.abs(deltaX) < SEGMENT_CLIP_EPSILON) {
-    if (start.x < A4_PAGE_LEFT || start.x > A4_PAGE_RIGHT) {
-      return null;
-    }
-  } else {
-    const leftT = (A4_PAGE_LEFT - start.x) / deltaX;
-    const rightT = (A4_PAGE_RIGHT - start.x) / deltaX;
-    startT = Math.max(startT, Math.min(leftT, rightT));
-    endT = Math.min(endT, Math.max(leftT, rightT));
-
-    if (startT - endT > SEGMENT_CLIP_EPSILON) {
-      return null;
-    }
-  }
-
-  return [sampleFreeDrawAt(start, end, startT), sampleFreeDrawAt(start, end, endT)];
-};
-
-const appendFreeDrawSample = (
-  samples: FreeDrawSample[],
-  nextSample: FreeDrawSample,
-) => {
-  const previousSample = samples[samples.length - 1];
-  if (
-    previousSample &&
-    Math.abs(previousSample.x - nextSample.x) < SEGMENT_CLIP_EPSILON &&
-    Math.abs(previousSample.y - nextSample.y) < SEGMENT_CLIP_EPSILON
-  ) {
-    return;
-  }
-
-  samples.push(nextSample);
-};
-
-const isFreeDrawInsideA4PageWidth = (
-  element: ExcalidrawFreeDrawElement,
-) =>
-  element.points.every((point) => {
-    const x = element.x + point[0];
-    return (
-      x >= A4_PAGE_LEFT - A4_MARGIN_GUARD_EPSILON &&
-      x <= A4_PAGE_RIGHT + A4_MARGIN_GUARD_EPSILON
-    );
-  });
-
-const clipFreeDrawToA4PageWidth = (
-  element: ExcalidrawFreeDrawElement,
-): ExcalidrawFreeDrawElement | null => {
-  if (element.angle !== 0 || element.points.length === 0) {
-    return null;
-  }
-
-  const samples = element.points.map((point, index) => ({
-    x: element.x + point[0],
-    y: element.y + point[1],
-    pressure: getFreeDrawPressure(element, index),
-  }));
-  const clippedSamples: FreeDrawSample[] = [];
-
-  if (samples.length === 1) {
-    if (!isFreeDrawInsideA4PageWidth(element)) {
-      return null;
-    }
-    clippedSamples.push({
-      ...samples[0],
-      x: clampA4PageX(samples[0].x),
-    });
-  }
-
-  for (let index = 1; index < samples.length; index += 1) {
-    const clippedSegment = clipSegmentToA4PageWidth(
-      samples[index - 1],
-      samples[index],
-    );
-
-    if (!clippedSegment) {
-      continue;
-    }
-
-    appendFreeDrawSample(clippedSamples, clippedSegment[0]);
-    appendFreeDrawSample(clippedSamples, clippedSegment[1]);
-  }
-
-  if (clippedSamples.length === 0) {
-    return null;
-  }
-
-  const minX = Math.min(...clippedSamples.map((sample) => sample.x));
-  const minY = Math.min(...clippedSamples.map((sample) => sample.y));
-  const maxX = Math.max(...clippedSamples.map((sample) => sample.x));
-  const maxY = Math.max(...clippedSamples.map((sample) => sample.y));
-  const points = clippedSamples.map(
-    (sample) => [sample.x - minX, sample.y - minY] as FreeDrawLocalPoint,
-  );
-
-  return {
-    ...element,
-    x: minX,
-    y: minY,
-    width: maxX - minX,
-    height: maxY - minY,
-    points,
-    pressures: element.simulatePressure
-      ? []
-      : clippedSamples.map((sample) => sample.pressure),
-    updated: Date.now(),
-    version: element.version + 1,
-    versionNonce: Math.trunc(Math.random() * 2147483647),
-  };
-};
-
-const isElementInsideA4PageWidth = (element: OrderedExcalidrawElement) => {
-  if (element.isDeleted) {
-    return true;
-  }
-
-  if (element.type === "freedraw") {
-    return isFreeDrawInsideA4PageWidth(element as ExcalidrawFreeDrawElement);
-  }
-
-  const [minX, , maxX] = getCommonBounds([element as never]);
-  return (
-    minX >= -A4_MARGIN_GUARD_EPSILON &&
-    maxX <= A4_PAGE_SIZE.width + A4_MARGIN_GUARD_EPSILON
-  );
-};
-
-const buildAcceptedA4ElementMap = (
-  elements: readonly OrderedExcalidrawElement[],
-) => {
-  const acceptedElements = new Map<string, OrderedExcalidrawElement>();
-
-  for (const element of elements) {
-    if (isElementInsideA4PageWidth(element)) {
-      acceptedElements.set(element.id, element);
-    }
-  }
-
-  return acceptedElements;
-};
-
-const getA4MarginGuardedElements = (
-  elements: readonly OrderedExcalidrawElement[],
-  acceptedElements: ReadonlyMap<string, OrderedExcalidrawElement>,
-  options: { keepPendingFreeDraw: boolean },
-) => {
-  let changed = false;
-  const nextElements: OrderedExcalidrawElement[] = [];
-
-  for (const element of elements) {
-    if (isElementInsideA4PageWidth(element)) {
-      nextElements.push(element);
-      continue;
-    }
-
-    if (options.keepPendingFreeDraw && element.type === "freedraw") {
-      nextElements.push(element);
-      continue;
-    }
-
-    changed = true;
-    if (element.type === "freedraw") {
-      const clippedElement = clipFreeDrawToA4PageWidth(
-        element as ExcalidrawFreeDrawElement,
-      );
-
-      if (clippedElement) {
-        nextElements.push(clippedElement as OrderedExcalidrawElement);
-        continue;
-      }
-    }
-
-    const acceptedElement = acceptedElements.get(element.id);
-    if (acceptedElement && isElementInsideA4PageWidth(acceptedElement)) {
-      nextElements.push(acceptedElement);
-      continue;
-    }
-  }
-
-  return changed ? nextElements : null;
 };
 
 const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -715,13 +485,7 @@ function App() {
   const persistInFlightRef = useRef<Promise<boolean> | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const lastAutosaveWarningAtRef = useRef(0);
-  const a4MarginGuardTimerRef = useRef<number | null>(null);
   const hasMeaningfulChangeRef = useRef(false);
-  const acceptedA4ElementsRef = useRef<Map<string, OrderedExcalidrawElement>>(
-    new Map(),
-  );
-  const suppressA4MarginGuardRef = useRef(false);
-  const lastA4MarginToastAtRef = useRef(0);
   const lastSnapshotAtRef = useRef(0);
   const lastSnapshotSignatureRef = useRef("");
   const forcedEraserToolRef = useRef<AppState["activeTool"] | null>(null);
@@ -779,16 +543,6 @@ function App() {
     },
     [showToast],
   );
-
-  const showA4MarginLockedToast = useCallback(() => {
-    const now = Date.now();
-    if (now - lastA4MarginToastAtRef.current < A4_MARGIN_TOAST_INTERVAL_MS) {
-      return;
-    }
-
-    lastA4MarginToastAtRef.current = now;
-    showToast("A4 margins are locked");
-  }, [showToast]);
 
   const runPersistCurrentScene = useCallback(
     async (forceSnapshot: boolean) => {
@@ -941,7 +695,6 @@ function App() {
         [];
       setPageSettings(nextPageSettings);
       pageSettingsRef.current = nextPageSettings;
-      acceptedA4ElementsRef.current = buildAcceptedA4ElementMap(nextElements);
       currentApi.history.clear();
 
       if (sceneData.libraryItems) {
@@ -1419,45 +1172,6 @@ function App() {
     setPageViewport(nextViewport);
   }, []);
 
-  const applyA4MarginGuard = useCallback(
-    (
-      elements: readonly OrderedExcalidrawElement[],
-      payload?: { appState: AppState; files: BinaryFiles },
-      options: { keepPendingFreeDraw?: boolean } = {},
-    ) => {
-      const guardedElements = getA4MarginGuardedElements(
-        elements,
-        acceptedA4ElementsRef.current,
-        { keepPendingFreeDraw: options.keepPendingFreeDraw ?? false },
-      );
-
-      if (!guardedElements) {
-        acceptedA4ElementsRef.current = buildAcceptedA4ElementMap(elements);
-        return false;
-      }
-
-      acceptedA4ElementsRef.current =
-        buildAcceptedA4ElementMap(guardedElements);
-      suppressA4MarginGuardRef.current = true;
-
-      if (payload) {
-        latestSceneRef.current = {
-          elements: guardedElements,
-          appState: payload.appState,
-          files: payload.files,
-        };
-      }
-
-      apiRef.current?.updateScene({
-        elements: guardedElements,
-        captureUpdate: CaptureUpdateAction.NEVER,
-      });
-      showA4MarginLockedToast();
-      return true;
-    },
-    [showA4MarginLockedToast],
-  );
-
   const handleChange = useCallback(
     (
       elements: readonly OrderedExcalidrawElement[],
@@ -1473,22 +1187,6 @@ function App() {
       setGridModeEnabled(appState.gridModeEnabled);
       setObjectsSnapModeEnabled(appState.objectsSnapModeEnabled);
       syncPageViewportFromAppState(appState);
-
-      if (suppressA4MarginGuardRef.current) {
-        suppressA4MarginGuardRef.current = false;
-        acceptedA4ElementsRef.current = buildAcceptedA4ElementMap(elements);
-      } else if (isA4MarginLocked(pageSettingsRef.current)) {
-        const guarded = applyA4MarginGuard(
-          elements,
-          { appState, files },
-          { keepPendingFreeDraw: true },
-        );
-        if (guarded) {
-          return;
-        }
-      } else {
-        acceptedA4ElementsRef.current = buildAcceptedA4ElementMap(elements);
-      }
 
       latestSceneRef.current = {
         elements,
@@ -1511,7 +1209,7 @@ function App() {
 
       scheduleAutosave();
     },
-    [applyA4MarginGuard, scheduleAutosave, syncPageViewportFromAppState],
+    [scheduleAutosave, syncPageViewportFromAppState],
   );
 
   useEffect(() => {
@@ -1545,11 +1243,6 @@ function App() {
         recentsRef.current = nextBootstrap.recents;
         settingsRef.current = nextBootstrap.settings;
         pageSettingsRef.current = nextBootstrap.pageSettings;
-        acceptedA4ElementsRef.current = buildAcceptedA4ElementMap(
-          (nextBootstrap.initialData?.elements as
-            | readonly OrderedExcalidrawElement[]
-            | undefined) ?? [],
-        );
         setBootstrapped(true);
       } catch {
         if (cancelled) {
@@ -1571,7 +1264,6 @@ function App() {
         recentsRef.current = [];
         settingsRef.current = DEFAULT_SETTINGS;
         pageSettingsRef.current = DEFAULT_PAGE_SETTINGS;
-        acceptedA4ElementsRef.current = new Map();
         setBootstrapped(true);
       } finally {
         if (!cancelled) {
@@ -1672,43 +1364,6 @@ function App() {
   }, [applyStylusSnapshot, bootstrapped, handlePendingOpen]);
 
   useEffect(() => {
-    if (!api) {
-      return;
-    }
-
-    const unsubscribePointerUp = api.onPointerUp(() => {
-      if (a4MarginGuardTimerRef.current) {
-        window.clearTimeout(a4MarginGuardTimerRef.current);
-      }
-
-      if (isA4MarginLocked(pageSettingsRef.current)) {
-        a4MarginGuardTimerRef.current = window.setTimeout(() => {
-          a4MarginGuardTimerRef.current = null;
-          const currentApi = apiRef.current ?? api;
-          if (!currentApi || !isA4MarginLocked(pageSettingsRef.current)) {
-            return;
-          }
-
-          const payload = createScenePayload(currentApi);
-          applyA4MarginGuard(
-            payload.elements,
-            { appState: payload.appState, files: payload.files },
-            { keepPendingFreeDraw: false },
-          );
-        }, 0);
-      }
-    });
-
-    return () => {
-      unsubscribePointerUp();
-      if (a4MarginGuardTimerRef.current) {
-        window.clearTimeout(a4MarginGuardTimerRef.current);
-        a4MarginGuardTimerRef.current = null;
-      }
-    };
-  }, [api, applyA4MarginGuard]);
-
-  useEffect(() => {
     const listenerPromise = AppPlugin.addListener("appStateChange", ({ isActive }) => {
       if (!isActive) {
         void persistCurrentScene(true);
@@ -1727,9 +1382,6 @@ function App() {
       }
       if (toastTimerRef.current) {
         window.clearTimeout(toastTimerRef.current);
-      }
-      if (a4MarginGuardTimerRef.current) {
-        window.clearTimeout(a4MarginGuardTimerRef.current);
       }
     };
   }, []);
@@ -2307,7 +1959,6 @@ function App() {
     (nextPageSettings: PageSettings) => {
       setPageSettings(nextPageSettings);
       pageSettingsRef.current = nextPageSettings;
-      let guardedMargins = false;
       if (isPageTemplateEnabled(nextPageSettings)) {
         const appState = apiRef.current?.getAppState();
         if (appState) {
@@ -2317,27 +1968,13 @@ function App() {
         pageViewportRef.current = null;
         setPageViewport(null);
       }
-      if (isA4MarginLocked(nextPageSettings) && apiRef.current) {
-        const payload = createScenePayload(apiRef.current);
-        guardedMargins = applyA4MarginGuard(payload.elements, {
-          appState: payload.appState,
-          files: payload.files,
-        });
-      }
       hasMeaningfulChangeRef.current = true;
       scheduleAutosave();
-      if (!guardedMargins) {
-        showToast(
-          `Page template: ${getPageTemplateOption(nextPageSettings.template).name}`,
-        );
-      }
+      showToast(
+        `Page template: ${getPageTemplateOption(nextPageSettings.template).name}`,
+      );
     },
-    [
-      applyA4MarginGuard,
-      scheduleAutosave,
-      showToast,
-      syncPageViewportFromAppState,
-    ],
+    [scheduleAutosave, showToast, syncPageViewportFromAppState],
   );
 
   const renameCanvas = useCallback(
