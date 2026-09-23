@@ -1097,21 +1097,38 @@ const writeCanvasIndex = async (index: CanvasIndex) => {
   await writeDataText(APP_PATHS.canvasIndex, JSON.stringify(index, null, 2));
 };
 
-const readCustomTemplateIndex = async (): Promise<CustomTemplateIndex> =>
-  safeJsonParse<CustomTemplateIndex>(
-    await readDataText(APP_PATHS.customTemplateIndex),
-    [],
-  );
-
-const writeCustomTemplateIndex = async (index: CustomTemplateIndex) => {
-  await writeDataText(
-    APP_PATHS.customTemplateIndex,
-    JSON.stringify(index, null, 2),
-  );
+type CanvasIndexUpdate<T> = {
+  result: T;
+  dirty: boolean;
 };
 
-const resolveCanvasId = async (savedScene: SavedSceneFile) => {
-  const index = await readCanvasIndex();
+let canvasIndexQueue: Promise<void> = Promise.resolve();
+
+const updateCanvasIndex = async <T>(
+  mutate: (index: CanvasIndex) => CanvasIndexUpdate<T>,
+): Promise<T> => {
+  const previous = canvasIndexQueue;
+  const run = (async () => {
+    await previous.catch(() => undefined);
+    const index = await readCanvasIndex();
+    const update = mutate(index);
+    if (update.dirty) {
+      await writeCanvasIndex(index);
+    }
+    return update.result;
+  })();
+
+  canvasIndexQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+};
+
+const ensureCanvasIdInIndex = (
+  index: CanvasIndex,
+  savedScene: SavedSceneFile,
+): CanvasIndexUpdate<string> => {
   const key = savedSceneKey(savedScene);
   const existingEntry = index[key];
 
@@ -1128,9 +1145,9 @@ const resolveCanvasId = async (savedScene: SavedSceneFile) => {
         location: savedScene.location,
         updatedAt: new Date().toISOString(),
       };
-      await writeCanvasIndex(index);
+      return { result: existingEntry.id, dirty: true };
     }
-    return existingEntry.id;
+    return { result: existingEntry.id, dirty: false };
   }
 
   const id = makeStableId();
@@ -1141,63 +1158,81 @@ const resolveCanvasId = async (savedScene: SavedSceneFile) => {
     location: savedScene.location,
     updatedAt: new Date().toISOString(),
   };
-  await writeCanvasIndex(index);
-  return id;
+  return { result: id, dirty: true };
 };
 
-const resolveCanvasIndexEntry = async (savedScene: SavedSceneFile) => {
-  const canvasId = await resolveCanvasId(savedScene);
-  const index = await readCanvasIndex();
-  return index[savedSceneKey(savedScene)] ?? {
-    id: canvasId,
-    name: savedScene.name,
-    path: savedScene.path,
-    location: savedScene.location,
-    updatedAt: new Date().toISOString(),
-  };
+const readCustomTemplateIndex = async (): Promise<CustomTemplateIndex> =>
+  safeJsonParse<CustomTemplateIndex>(
+    await readDataText(APP_PATHS.customTemplateIndex),
+    [],
+  );
+
+const writeCustomTemplateIndex = async (index: CustomTemplateIndex) => {
+  await writeDataText(
+    APP_PATHS.customTemplateIndex,
+    JSON.stringify(index, null, 2),
+  );
 };
+
+const resolveCanvasId = async (savedScene: SavedSceneFile) =>
+  updateCanvasIndex((index) => ensureCanvasIdInIndex(index, savedScene));
+
+const resolveCanvasIndexEntry = async (savedScene: SavedSceneFile) =>
+  updateCanvasIndex((index) => {
+    const { result: canvasId, dirty } = ensureCanvasIdInIndex(
+      index,
+      savedScene,
+    );
+    const entry = index[savedSceneKey(savedScene)] ?? {
+      id: canvasId,
+      name: savedScene.name,
+      path: savedScene.path,
+      location: savedScene.location,
+      updatedAt: new Date().toISOString(),
+    };
+    return { result: entry, dirty };
+  });
 
 const updateCanvasIndexForRename = async (
   fromScene: SavedSceneFile,
   toScene: SavedSceneFile,
-) => {
-  const index = await readCanvasIndex();
-  const fromKey = savedSceneKey(fromScene);
-  const toKey = savedSceneKey(toScene);
-  const existingEntry = index[fromKey];
-  const id = existingEntry?.id ?? makeStableId();
+) =>
+  updateCanvasIndex((index) => {
+    const fromKey = savedSceneKey(fromScene);
+    const toKey = savedSceneKey(toScene);
+    const existingEntry = index[fromKey];
+    const id = existingEntry?.id ?? makeStableId();
 
-  delete index[fromKey];
-  index[toKey] = {
-    id,
-    name: toScene.name,
-    path: toScene.path,
-    location: toScene.location,
-    pinned: existingEntry?.pinned,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeCanvasIndex(index);
-  return id;
-};
+    delete index[fromKey];
+    index[toKey] = {
+      id,
+      name: toScene.name,
+      path: toScene.path,
+      location: toScene.location,
+      pinned: existingEntry?.pinned,
+      updatedAt: new Date().toISOString(),
+    };
+    return { result: id, dirty: true };
+  });
 
-const removeCanvasIndexEntry = async (savedScene: SavedSceneFile) => {
-  const index = await readCanvasIndex();
-  delete index[savedSceneKey(savedScene)];
-  await writeCanvasIndex(index);
-};
+const removeCanvasIndexEntry = async (savedScene: SavedSceneFile) =>
+  updateCanvasIndex((index) => {
+    delete index[savedSceneKey(savedScene)];
+    return { result: undefined, dirty: true };
+  });
 
-const removeCanvasIndexEntriesForName = async (filename: string) => {
-  const index = await readCanvasIndex();
-  const normalizedSuffix = `/${filename}`;
+const removeCanvasIndexEntriesForName = async (filename: string) =>
+  updateCanvasIndex((index) => {
+    const normalizedSuffix = `/${filename}`;
 
-  for (const [key, entry] of Object.entries(index)) {
-    if (entry.name === filename || entry.path.endsWith(normalizedSuffix)) {
-      delete index[key];
+    for (const [key, entry] of Object.entries(index)) {
+      if (entry.name === filename || entry.path.endsWith(normalizedSuffix)) {
+        delete index[key];
+      }
     }
-  }
 
-  await writeCanvasIndex(index);
-};
+    return { result: undefined, dirty: true };
+  });
 
 const thumbnailCacheName = (savedScene: SavedSceneFile) =>
   hashCacheKey(savedSceneKey(savedScene));
@@ -1255,24 +1290,29 @@ export const persistSavedSceneThumbnail = async (
 export const setSavedScenePinned = async (
   savedScene: SavedSceneFile,
   pinned: boolean,
-) => {
-  const index = await readCanvasIndex();
-  const key = savedSceneKey(savedScene);
-  const existingEntry = index[key] ?? (await resolveCanvasIndexEntry(savedScene));
+) =>
+  updateCanvasIndex((index) => {
+    const key = savedSceneKey(savedScene);
+    const existingEntry = index[key] ?? {
+      id: savedScene.canvasId || makeStableId(),
+      name: savedScene.name,
+      path: savedScene.path,
+      location: savedScene.location,
+      updatedAt: new Date().toISOString(),
+    };
 
-  index[key] = {
-    ...existingEntry,
-    id: existingEntry.id || savedScene.canvasId || makeStableId(),
-    name: savedScene.name,
-    path: savedScene.path,
-    location: savedScene.location,
-    pinned,
-    updatedAt: new Date().toISOString(),
-  };
+    index[key] = {
+      ...existingEntry,
+      id: existingEntry.id || savedScene.canvasId || makeStableId(),
+      name: savedScene.name,
+      path: savedScene.path,
+      location: savedScene.location,
+      pinned,
+      updatedAt: new Date().toISOString(),
+    };
 
-  await writeCanvasIndex(index);
-  return pinned;
-};
+    return { result: pinned, dirty: true };
+  });
 
 const normalizeSceneFilename = (filename: string) =>
   suggestedFilename(filename, ".excalidraw");
