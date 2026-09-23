@@ -84,6 +84,8 @@ import {
   serializeScene,
   suggestedFilename,
   writeAutosave,
+  writeDegradedAutosave,
+  clearDegradedAutosave,
   type CanvasVersionMeta,
   type CustomCanvasTemplate,
   type DrawSettings,
@@ -887,10 +889,13 @@ function App() {
         status: "saving",
         updatedAt: new Date().toISOString(),
       });
-      let serialized = serializeScene(payload, pageSettingsRef.current);
+      const serialized = serializeScene(payload, pageSettingsRef.current);
+      let fullSerialized: string | null = null;
 
       try {
         await writeAutosave(serialized);
+        fullSerialized = serialized;
+        await clearDegradedAutosave();
         const savedAt = new Date().toISOString();
         setLastAutosavedAt(savedAt);
         setAutosaveHealth({
@@ -899,15 +904,16 @@ function App() {
         });
       } catch {
         try {
-          // Compact fallback keeps autosave available when file payloads are too large.
-          serialized = serializeScene(
+          // Compact fallback keeps a degraded autosave available when file
+          // payloads are too large, without touching the last complete copy.
+          const degradedSerialized = serializeScene(
             {
               ...payload,
               files: {} as BinaryFiles,
             },
             pageSettingsRef.current,
           );
-          await writeAutosave(serialized);
+          await writeDegradedAutosave(degradedSerialized);
           const savedAt = new Date().toISOString();
           const message =
             "Autosave is degraded. Embedded files/images may need manual save/export.";
@@ -930,12 +936,12 @@ function App() {
         }
       }
 
-      if (!sceneHasContent(payload)) {
+      if (!sceneHasContent(payload) || !fullSerialized) {
         return true;
       }
 
       const shouldSnapshot =
-        lastSnapshotSignatureRef.current !== serialized &&
+        lastSnapshotSignatureRef.current !== fullSerialized &&
         (forceSnapshot ||
           Date.now() - lastSnapshotAtRef.current > SNAPSHOT_INTERVAL_MS);
 
@@ -945,7 +951,7 @@ function App() {
 
       try {
         const nextRecents = await saveRecoverySnapshot({
-          serializedScene: serialized,
+          serializedScene: fullSerialized,
           title: makeSceneTitle(payload.appState.name),
           elementCount: payload.elements.filter((element) => !element.isDeleted)
             .length,
@@ -953,7 +959,7 @@ function App() {
         });
 
         lastSnapshotAtRef.current = Date.now();
-        lastSnapshotSignatureRef.current = serialized;
+        lastSnapshotSignatureRef.current = fullSerialized;
         recentsRef.current = nextRecents;
         startTransition(() => setRecents(nextRecents));
       } catch {

@@ -27,6 +27,7 @@ import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/ty
 
 const APP_PATHS = {
   autosave: "scenes/autosave.excalidraw",
+  degradedAutosave: "scenes/autosave.degraded.excalidraw",
   library: "library/default.excalidrawlib",
   recoveryDir: "scenes/recovery",
   canvasIndex: "canvas-manager/index.json",
@@ -783,6 +784,14 @@ export const persistLibrary = async (libraryItems: LibraryItems) => {
 
 export const writeAutosave = async (serializedScene: string) => {
   await writeDataText(APP_PATHS.autosave, serializedScene);
+};
+
+export const writeDegradedAutosave = async (serializedScene: string) => {
+  await writeDataText(APP_PATHS.degradedAutosave, serializedScene);
+};
+
+export const clearDegradedAutosave = async () => {
+  await removeDataFile(APP_PATHS.degradedAutosave);
 };
 
 export const loadSceneFromPath = async (
