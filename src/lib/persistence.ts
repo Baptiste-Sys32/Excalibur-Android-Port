@@ -830,11 +830,12 @@ export const saveRecoverySnapshot = async (options: {
     ...options.recents.filter((entry) => entry.path !== path),
   ].slice(0, MAX_RECENT_SCENES);
 
+  await persistRecentScenes(nextRecents);
+
   const removedEntries = options.recents.filter(
     (entry) => !nextRecents.some((nextEntryItem) => nextEntryItem.path === entry.path),
   );
   await Promise.all(removedEntries.map((entry) => removeDataFile(entry.path)));
-  await persistRecentScenes(nextRecents);
   return nextRecents;
 };
 
