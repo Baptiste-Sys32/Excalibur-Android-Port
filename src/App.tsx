@@ -708,6 +708,7 @@ function App() {
   const pageViewportRef = useRef<PageViewport | null>(null);
   const libraryItemsRef = useRef<LibraryItems>([]);
   const autosaveTimerRef = useRef<number | null>(null);
+  const persistInFlightRef = useRef<Promise<boolean> | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const lastAutosaveWarningAtRef = useRef(0);
   const a4MarginGuardTimerRef = useRef<number | null>(null);
@@ -871,7 +872,7 @@ function App() {
     }, STRAIGHTEN_HOLD_MS);
   }, []);
 
-  const persistCurrentScene = useCallback(
+  const runPersistCurrentScene = useCallback(
     async (forceSnapshot: boolean) => {
       const currentApi = apiRef.current;
       const payload = currentApi
@@ -962,6 +963,28 @@ function App() {
       return true;
     },
     [showThrottledAutosaveWarning, showToast],
+  );
+
+  const persistCurrentScene = useCallback(
+    async (forceSnapshot: boolean) => {
+      const previous = persistInFlightRef.current;
+      const run = (async () => {
+        if (previous) {
+          await previous.catch(() => undefined);
+        }
+        return runPersistCurrentScene(forceSnapshot);
+      })();
+
+      persistInFlightRef.current = run;
+      try {
+        return await run;
+      } finally {
+        if (persistInFlightRef.current === run) {
+          persistInFlightRef.current = null;
+        }
+      }
+    },
+    [runPersistCurrentScene],
   );
 
   const scheduleAutosave = useCallback(() => {
