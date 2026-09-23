@@ -15,7 +15,7 @@ import {
   normalizePageSettings,
   type PageSettings,
 } from "./pageSettings";
-import { createStoreZip, parseStoreZip } from "./simpleZip";
+import { createStoreZip, parseStoreZip, type ZipEntry } from "./simpleZip";
 import type { PendingOpenPayload } from "./androidBridge";
 import type {
   AppState,
@@ -2010,28 +2010,81 @@ export const restoreBackupZip = async (
     throw new Error("Backup manifest is missing");
   }
 
-  const manifest = safeJsonParse<{ app?: string; version?: number }>(
-    new TextDecoder().decode(manifestEntry.data),
-    {},
-  );
+  const manifest = safeJsonParse<{
+    app?: string;
+    version?: number;
+    createdAt?: string;
+    files?: Array<{ path?: unknown; size?: unknown }>;
+  }>(new TextDecoder().decode(manifestEntry.data), {});
 
   if (manifest.app !== "Escalidraw" || manifest.version !== 1) {
     throw new Error("Backup manifest is not compatible");
   }
 
-  const timestamp = formatBackupTimestamp(new Date());
-  const summary: BackupRestoreSummary = {
-    restored: 0,
-    renamed: 0,
-    skipped: 0,
-    files: [],
-  };
+  if (
+    typeof manifest.createdAt !== "string" ||
+    Number.isNaN(Date.parse(manifest.createdAt)) ||
+    !Array.isArray(manifest.files)
+  ) {
+    throw new Error("Backup manifest is invalid");
+  }
+
+  const manifestSizes = new Map<string, number>();
+  for (const file of manifest.files) {
+    if (
+      !file ||
+      typeof file.path !== "string" ||
+      typeof file.size !== "number" ||
+      !Number.isFinite(file.size) ||
+      file.size < 0
+    ) {
+      throw new Error("Backup manifest is invalid");
+    }
+    manifestSizes.set(file.path, file.size);
+  }
+
+  const validEntries: ZipEntry[] = [];
+  const skippedEntries: string[] = [];
 
   for (const entry of entries) {
     if (entry.name === "manifest.json") {
       continue;
     }
 
+    if (!isSafeBackupEntryPath(entry.name)) {
+      skippedEntries.push(entry.name);
+      continue;
+    }
+
+    if (manifestSizes.get(entry.name) !== entry.data.length) {
+      skippedEntries.push(entry.name);
+      continue;
+    }
+
+    validEntries.push(entry);
+  }
+
+  const missingEntries = [...manifestSizes.keys()].filter(
+    (path) =>
+      path !== "manifest.json" &&
+      !validEntries.some((entry) => entry.name === path),
+  );
+
+  if (missingEntries.length > 0) {
+    throw new Error(
+      `Backup archive is incomplete (${missingEntries.length} file${missingEntries.length === 1 ? "" : "s"} missing)`,
+    );
+  }
+
+  const timestamp = formatBackupTimestamp(new Date());
+  const summary: BackupRestoreSummary = {
+    restored: 0,
+    renamed: 0,
+    skipped: skippedEntries.length,
+    files: [],
+  };
+
+  for (const entry of validEntries) {
     if (!isSafeBackupEntryPath(entry.name)) {
       summary.skipped += 1;
       continue;
