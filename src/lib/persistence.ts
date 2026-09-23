@@ -1543,16 +1543,23 @@ export const renameSavedScene = async (
     return savedScene;
   }
 
-  if (await nativeFileExists(targetPath, directory)) {
-    throw new Error(`${filename} already exists`);
+  const sourceExists = await nativeFileExists(savedScene.path, directory);
+  if (!sourceExists && !(await nativeFileExists(targetPath, directory))) {
+    throw new Error(`${savedScene.name} is unavailable`);
   }
 
-  await Filesystem.rename({
-    from: savedScene.path,
-    directory,
-    to: targetPath,
-    toDirectory: directory,
-  });
+  if (sourceExists) {
+    if (await nativeFileExists(targetPath, directory)) {
+      throw new Error(`${filename} already exists`);
+    }
+
+    await Filesystem.rename({
+      from: savedScene.path,
+      directory,
+      to: targetPath,
+      toDirectory: directory,
+    });
+  }
 
   const renamedScene = await statSavedScene(
     targetPath,
@@ -1569,21 +1576,32 @@ export const duplicateSavedScene = async (savedScene: SavedSceneFile) => {
   const copyBase = `${sanitizeVisibleFilenamePart(
     filenameWithoutExtension(savedScene.name),
   )} Copy`;
-  const preferredFilename = `${copyBase}.excalidraw`;
-  const filename = await uniqueFilenameInDirectory(
-    USER_STORAGE_PATHS.canvasesDir,
-    Directory.Documents,
-    preferredFilename,
-  );
-  const targetPath = `${USER_STORAGE_PATHS.canvasesDir}/${filename}`;
   const serializedScene = await readTextFileNative(
     savedScene.path,
     sourceDirectory,
   );
 
   await ensureUserStorageDirectories();
-  await writeTextFileNative(targetPath, Directory.Documents, serializedScene);
-  return statSavedScene(targetPath, Directory.Documents, "documents");
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const preferredFilename =
+      attempt === 0 ? `${copyBase}.excalidraw` : `${copyBase} ${attempt + 1}.excalidraw`;
+    const filename = await uniqueFilenameInDirectory(
+      USER_STORAGE_PATHS.canvasesDir,
+      Directory.Documents,
+      preferredFilename,
+    );
+    const targetPath = `${USER_STORAGE_PATHS.canvasesDir}/${filename}`;
+
+    if (await nativeFileExists(targetPath, Directory.Documents)) {
+      continue;
+    }
+
+    await writeTextFileNative(targetPath, Directory.Documents, serializedScene);
+    return statSavedScene(targetPath, Directory.Documents, "documents");
+  }
+
+  throw new Error(`Could not duplicate ${savedScene.name}`);
 };
 
 const getNativeSceneCleanupDirectories = (): NativeStorageDirectory[] => {
