@@ -1525,9 +1525,10 @@ export const restoreCanvasVersion = async (
     throw new Error("Canvas version file is unavailable");
   }
 
+  const restoredScene = await loadSceneFromText(serializedScene, libraryItems);
   await writeTextFileNative(savedScene.path, directory, serializedScene);
   await removeSavedSceneThumbnail(savedScene);
-  return loadSceneFromText(serializedScene, libraryItems);
+  return restoredScene;
 };
 
 export const renameSavedScene = async (
