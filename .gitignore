@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets and credentials
+.env*
+*.pem
+*.key
+*secret*
+*token*
+auth.json
+credentials
+credentials.json
+
+# Android signing and local configuration
+*.jks
+*.keystore
+keystore.properties
+local.properties
+google-services.json

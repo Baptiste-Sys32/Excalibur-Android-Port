@@ -1,0 +1,26 @@
+# Secrets and credentials
+.env*
+*.pem
+*.key
+*secret*
+*token*
+auth.json
+credentials
+credentials.json
+
+# Android signing and local configuration
+*.jks
+*.keystore
+keystore.properties
+local.properties
+google-services.json
+
+# Build outputs and dependencies
+node_modules/
+dist/
+dist-ssr/
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
