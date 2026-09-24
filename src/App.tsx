@@ -482,6 +482,7 @@ function App() {
   const libraryItemsRef = useRef<LibraryItems>([]);
   const autosaveTimerRef = useRef<number | null>(null);
   const persistInFlightRef = useRef<Promise<boolean> | null>(null);
+  const thumbnailHydrationRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
   const lastAutosaveWarningAtRef = useRef(0);
   const hasMeaningfulChangeRef = useRef(false);
@@ -1434,20 +1435,24 @@ function App() {
 
   const hydrateSavedSceneThumbnails = useCallback(
     async (savedScenes: SavedSceneFile[]) => {
+      const generation = thumbnailHydrationRef.current;
       const { exportToBlob } = await import("@excalidraw/excalidraw");
+      const updates = new Map<
+        string,
+        { thumbnailUri: string; elementCount?: number }
+      >();
 
       for (const savedScene of savedScenes) {
+        if (generation !== thumbnailHydrationRef.current) {
+          return;
+        }
+
         try {
           const cachedThumbnail = await getSavedSceneThumbnail(savedScene);
           if (cachedThumbnail) {
-            setSavedCanvasFiles((currentFiles) =>
-              currentFiles.map((currentFile) =>
-                currentFile.path === savedScene.path &&
-                currentFile.location === savedScene.location
-                  ? { ...currentFile, thumbnailUri: cachedThumbnail }
-                  : currentFile,
-              ),
-            );
+            updates.set(`${savedScene.location}:${savedScene.path}`, {
+              thumbnailUri: cachedThumbnail,
+            });
             continue;
           }
 
@@ -1471,27 +1476,33 @@ function App() {
           });
           const thumbnailUri = await blobToDataUrl(blob);
           await persistSavedSceneThumbnail(savedScene, thumbnailUri);
-          setSavedCanvasFiles((currentFiles) =>
-            currentFiles.map((currentFile) =>
-              currentFile.path === savedScene.path &&
-              currentFile.location === savedScene.location
-                ? {
-                    ...currentFile,
-                    thumbnailUri,
-                    elementCount: elements.length,
-                  }
-                : currentFile,
-            ),
-          );
+          updates.set(`${savedScene.location}:${savedScene.path}`, {
+            thumbnailUri,
+            elementCount: elements.length,
+          });
         } catch {
           // Thumbnail generation is best-effort and should not block the manager.
         }
       }
+
+      if (generation !== thumbnailHydrationRef.current || updates.size === 0) {
+        return;
+      }
+
+      setSavedCanvasFiles((currentFiles) =>
+        currentFiles.map((currentFile) => {
+          const update = updates.get(
+            `${currentFile.location}:${currentFile.path}`,
+          );
+          return update ? { ...currentFile, ...update } : currentFile;
+        }),
+      );
     },
     [],
   );
 
   const refreshSavedScenes = useCallback(async () => {
+    thumbnailHydrationRef.current += 1;
     setCanvasDirectoryLoading(true);
 
     try {
@@ -2205,7 +2216,10 @@ function App() {
           savedScenes={savedCanvasFiles}
           versions={canvasVersions}
           versionsLoading={canvasVersionsLoading}
-          onClose={() => setCanvasDirectoryOpen(false)}
+          onClose={() => {
+            thumbnailHydrationRef.current += 1;
+            setCanvasDirectoryOpen(false);
+          }}
           onDelete={(savedScene) => {
             void deleteCanvas(savedScene);
           }}
