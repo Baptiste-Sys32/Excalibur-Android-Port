@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 import {
   A4_PAGE_SIZE,
@@ -384,7 +384,7 @@ const renderInfiniteTemplate = (
   }
 };
 
-export function PageTemplateOverlay({
+export const PageTemplateOverlay = memo(function PageTemplateOverlay({
   pageSettings,
   viewport,
 }: PageTemplateOverlayProps) {
@@ -406,7 +406,7 @@ export function PageTemplateOverlay({
       )}
     </svg>
   );
-}
+});
 
 function A4VerticalTemplate({
   pageSettings,

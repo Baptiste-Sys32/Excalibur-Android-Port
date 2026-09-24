@@ -479,6 +479,8 @@ function App() {
   const settingsRef = useRef<DrawSettings>(DEFAULT_SETTINGS);
   const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const pageViewportRef = useRef<PageViewport | null>(null);
+  const pageViewportPendingRef = useRef<PageViewport | null>(null);
+  const pageViewportRafRef = useRef<number | null>(null);
   const libraryItemsRef = useRef<LibraryItems>([]);
   const autosaveTimerRef = useRef<number | null>(null);
   const persistInFlightRef = useRef<Promise<boolean> | null>(null);
@@ -1162,38 +1164,64 @@ function App() {
     setObjectsSnapModeEnabled(nextValue);
   }, [objectsSnapModeEnabled]);
 
-  const syncPageViewportFromAppState = useCallback((appState: AppState) => {
-    if (!isPageTemplateEnabled(pageSettingsRef.current)) {
-      if (pageViewportRef.current) {
-        pageViewportRef.current = null;
-        setPageViewport(null);
-      }
+  const flushPageViewport = useCallback(() => {
+    pageViewportRafRef.current = null;
+    const pending = pageViewportPendingRef.current;
+    pageViewportPendingRef.current = null;
+
+    if (!pending) {
       return;
     }
 
-    const nextViewport: PageViewport = {
-      scrollX: appState.scrollX,
-      scrollY: appState.scrollY,
-      width: appState.width,
-      height: appState.height,
-      zoom: appState.zoom?.value || 1,
-    };
     const currentViewport = pageViewportRef.current;
-
     if (
       currentViewport &&
-      currentViewport.scrollX === nextViewport.scrollX &&
-      currentViewport.scrollY === nextViewport.scrollY &&
-      currentViewport.width === nextViewport.width &&
-      currentViewport.height === nextViewport.height &&
-      currentViewport.zoom === nextViewport.zoom
+      currentViewport.scrollX === pending.scrollX &&
+      currentViewport.scrollY === pending.scrollY &&
+      currentViewport.width === pending.width &&
+      currentViewport.height === pending.height &&
+      currentViewport.zoom === pending.zoom
     ) {
       return;
     }
 
-    pageViewportRef.current = nextViewport;
-    setPageViewport(nextViewport);
+    pageViewportRef.current = pending;
+    setPageViewport(pending);
   }, []);
+
+  const syncPageViewportFromAppState = useCallback(
+    (appState: AppState) => {
+      if (!isPageTemplateEnabled(pageSettingsRef.current)) {
+        if (pageViewportRafRef.current) {
+          window.cancelAnimationFrame(pageViewportRafRef.current);
+          pageViewportRafRef.current = null;
+        }
+        pageViewportPendingRef.current = null;
+        if (pageViewportRef.current) {
+          pageViewportRef.current = null;
+          setPageViewport(null);
+        }
+        return;
+      }
+
+      // Quantize so sub-pixel scroll noise doesn't rebuild the overlay.
+      const nextViewport: PageViewport = {
+        scrollX: Math.round(appState.scrollX),
+        scrollY: Math.round(appState.scrollY),
+        width: Math.round(appState.width),
+        height: Math.round(appState.height),
+        zoom: Math.round((appState.zoom?.value || 1) * 1000) / 1000,
+      };
+      pageViewportPendingRef.current = nextViewport;
+
+      if (pageViewportRafRef.current === null) {
+        pageViewportRafRef.current = window.requestAnimationFrame(
+          flushPageViewport,
+        );
+      }
+    },
+    [flushPageViewport],
+  );
 
   const handleChange = useCallback(
     (
@@ -1406,6 +1434,10 @@ function App() {
       }
       if (toastTimerRef.current) {
         window.clearTimeout(toastTimerRef.current);
+      }
+      if (pageViewportRafRef.current !== null) {
+        window.cancelAnimationFrame(pageViewportRafRef.current);
+        pageViewportRafRef.current = null;
       }
     };
   }, []);
