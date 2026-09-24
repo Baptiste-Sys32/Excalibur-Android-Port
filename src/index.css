@@ -486,6 +486,9 @@ select {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  /* Let the browser skip rendering offscreen rows entirely. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4.2rem;
 }
 
 .draw-directory-entry--template {

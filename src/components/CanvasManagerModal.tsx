@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 import type {
   CanvasVersionMeta,
@@ -65,6 +65,111 @@ const locationLabel = (savedScene: SavedSceneFile) => {
   return "App data";
 };
 
+type CanvasRowProps = {
+  savedScene: SavedSceneFile;
+  onOpen: (savedScene: SavedSceneFile) => void;
+  onRename: (savedScene: SavedSceneFile) => void;
+  onDuplicate: (savedScene: SavedSceneFile) => void;
+  onDelete: (savedScene: SavedSceneFile) => void;
+  onTogglePinned: (savedScene: SavedSceneFile) => void;
+  onTimeline: (savedScene: SavedSceneFile) => void;
+};
+
+const areCanvasRowsEqual = (
+  previous: CanvasRowProps,
+  next: CanvasRowProps,
+) => {
+  const a = previous.savedScene;
+  const b = next.savedScene;
+  return (
+    a.path === b.path &&
+    a.location === b.location &&
+    a.name === b.name &&
+    a.mtime === b.mtime &&
+    a.size === b.size &&
+    a.pinned === b.pinned &&
+    a.thumbnailUri === b.thumbnailUri &&
+    a.elementCount === b.elementCount
+  );
+};
+
+const CanvasRow = memo(function CanvasRow({
+  savedScene,
+  onOpen,
+  onRename,
+  onDuplicate,
+  onDelete,
+  onTogglePinned,
+  onTimeline,
+}: CanvasRowProps) {
+  return (
+    <div
+      key={`${savedScene.location}:${savedScene.path}`}
+      className="draw-directory-entry draw-directory-entry--canvas"
+    >
+      <button
+        className="draw-directory-entry-main"
+        type="button"
+        onClick={() => onOpen(savedScene)}
+      >
+        <span className="draw-directory-thumbnail" aria-hidden="true">
+          {savedScene.thumbnailUri ? (
+            <img src={savedScene.thumbnailUri} alt="" />
+          ) : (
+            <span>{savedScene.name.slice(0, 1).toUpperCase()}</span>
+          )}
+        </span>
+        <span className="draw-directory-entry-text">
+          <span className="draw-menu-button-label">{savedScene.name}</span>
+          <span className="draw-menu-button-meta">
+            {formatTimestamp(savedScene.mtime)} - {formatBytes(savedScene.size)} -{" "}
+            {locationLabel(savedScene)}
+          </span>
+        </span>
+      </button>
+      <span className="draw-directory-entry-actions">
+        <button
+          aria-pressed={Boolean(savedScene.pinned)}
+          aria-label={`${savedScene.pinned ? "Unpin" : "Pin"} ${savedScene.name}`}
+          type="button"
+          onClick={() => onTogglePinned(savedScene)}
+        >
+          {savedScene.pinned ? "Pinned" : "Pin"}
+        </button>
+        <button
+          type="button"
+          aria-label={`Timeline for ${savedScene.name}`}
+          onClick={() => onTimeline(savedScene)}
+        >
+          Timeline
+        </button>
+        <button
+          type="button"
+          aria-label={`Rename ${savedScene.name}`}
+          onClick={() => onRename(savedScene)}
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          aria-label={`Duplicate ${savedScene.name}`}
+          onClick={() => onDuplicate(savedScene)}
+        >
+          Duplicate
+        </button>
+        <button
+          className="draw-directory-danger-action"
+          type="button"
+          aria-label={`Delete ${savedScene.name}`}
+          onClick={() => onDelete(savedScene)}
+        >
+          Delete
+        </button>
+      </span>
+    </div>
+  );
+}, areCanvasRowsEqual);
+
 export function CanvasManagerModal({
   activeTimelineScene,
   loading,
@@ -82,11 +187,21 @@ export function CanvasManagerModal({
   versionsLoading,
 }: CanvasManagerModalProps) {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sortMode, setSortMode] = useState<CanvasSortMode>("recent");
   const [filterMode, setFilterMode] = useState<CanvasFilterMode>("all");
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
   const visibleScenes = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = debouncedQuery.trim().toLowerCase();
     const filteredScenes = savedScenes.filter((scene) => {
       if (filterMode === "pinned" && !scene.pinned) {
         return false;
@@ -109,7 +224,7 @@ export function CanvasManagerModal({
       }
       return second.mtime - first.mtime || first.name.localeCompare(second.name);
     });
-  }, [filterMode, query, savedScenes, sortMode]);
+  }, [filterMode, debouncedQuery, savedScenes, sortMode]);
 
   return (
     <div className="draw-directory-modal-backdrop" onClick={onClose}>
@@ -183,56 +298,16 @@ export function CanvasManagerModal({
               </p>
             ) : (
               visibleScenes.map((savedScene) => (
-                <div
+                <CanvasRow
                   key={`${savedScene.location}:${savedScene.path}`}
-                  className="draw-directory-entry draw-directory-entry--canvas"
-                >
-                  <button
-                    className="draw-directory-entry-main"
-                    type="button"
-                    onClick={() => onOpen(savedScene)}
-                  >
-                    <span className="draw-directory-thumbnail" aria-hidden="true">
-                      {savedScene.thumbnailUri ? (
-                        <img src={savedScene.thumbnailUri} alt="" />
-                      ) : (
-                        <span>{savedScene.name.slice(0, 1).toUpperCase()}</span>
-                      )}
-                    </span>
-                    <span className="draw-directory-entry-text">
-                      <span className="draw-menu-button-label">{savedScene.name}</span>
-                      <span className="draw-menu-button-meta">
-                        {formatTimestamp(savedScene.mtime)} - {formatBytes(savedScene.size)} -{" "}
-                        {locationLabel(savedScene)}
-                      </span>
-                    </span>
-                  </button>
-                  <span className="draw-directory-entry-actions">
-                    <button
-                      aria-pressed={Boolean(savedScene.pinned)}
-                      type="button"
-                      onClick={() => onTogglePinned(savedScene)}
-                    >
-                      {savedScene.pinned ? "Pinned" : "Pin"}
-                    </button>
-                    <button type="button" onClick={() => onTimeline(savedScene)}>
-                      Timeline
-                    </button>
-                    <button type="button" onClick={() => onRename(savedScene)}>
-                      Rename
-                    </button>
-                    <button type="button" onClick={() => onDuplicate(savedScene)}>
-                      Duplicate
-                    </button>
-                    <button
-                      className="draw-directory-danger-action"
-                      type="button"
-                      onClick={() => onDelete(savedScene)}
-                    >
-                      Delete
-                    </button>
-                  </span>
-                </div>
+                  savedScene={savedScene}
+                  onOpen={onOpen}
+                  onRename={onRename}
+                  onDuplicate={onDuplicate}
+                  onDelete={onDelete}
+                  onTogglePinned={onTogglePinned}
+                  onTimeline={onTimeline}
+                />
               ))
             )}
           </div>
