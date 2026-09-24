@@ -409,10 +409,10 @@ export const FreedrawIcon = createIcon(
 export const HighlighterIcon = createIcon(
   <g strokeWidth="1.25">
     <path
-      d="M4 18.5 H13"
+      d="M4 19 H14"
       stroke="#FFE14D"
       strokeOpacity="0.55"
-      strokeWidth="3.5"
+      strokeWidth="3"
     />
     <path d="M3 19h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
     <path d="M12.5 5.5l4 4" />
