@@ -14,6 +14,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import { BackupCenterModal } from "./components/BackupCenterModal";
@@ -1241,6 +1242,36 @@ function App() {
       releaseOverride("barrel");
     }
   }, []);
+
+  const handleBarrelEraserPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const nativeEvent = event.nativeEvent;
+      const activeOverride = forcedEraserToolRef.current;
+      const eraserEnabled =
+        settingsRef.current.stylusButtonAction === "eraser" ||
+        (activeOverride?.reason === "barrel" &&
+          activeOverride.overrideType === "eraser");
+      const barrelPressed =
+        nativeEvent.button === 2 ||
+        nativeEvent.button === 32 ||
+        (nativeEvent.button === 0 && (nativeEvent.buttons & (2 | 32)) !== 0);
+
+      if (
+        nativeEvent.pointerType !== "pen" ||
+        nativeEvent.button === 5 ||
+        !barrelPressed ||
+        !eraserEnabled
+      ) {
+        return;
+      }
+
+      Object.defineProperty(nativeEvent, "button", {
+        configurable: true,
+        value: 5,
+      });
+    },
+    [],
+  );
 
   const updatePenMode = useCallback(async (nextPenMode: boolean) => {
     const currentApi = apiRef.current;
@@ -2708,7 +2739,11 @@ function App() {
   }
 
   return (
-    <div ref={shellRef} className="draw-app-shell">
+    <div
+      ref={shellRef}
+      className="draw-app-shell"
+      onPointerDownCapture={handleBarrelEraserPointerDown}
+    >
       <input
         ref={fileInputRef}
         className="draw-hidden-input"
