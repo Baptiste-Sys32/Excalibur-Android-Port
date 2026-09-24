@@ -408,10 +408,15 @@ export const FreedrawIcon = createIcon(
 
 export const HighlighterIcon = createIcon(
   <g strokeWidth="1.25">
-    <path d="M3 19h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
-    <path d="M12.5 5.5l4 4" />
-    <path d="M4.5 13.5l4 4" />
-    <path d="M21 15v4h-8l4 -4l4 0" />
+    <path d="M6.6 15.6 L15.6 6.6" />
+    <path d="M4.4 13.4 L13.4 4.4" />
+    <path d="M6.6 15.6 L5.3 16.8" />
+    <path d="M4.4 13.4 L3.7 14.2" />
+    <path d="M5.3 16.8 L3.7 14.2" />
+    <path d="M12.6 4.7 L14.1 3.3" />
+    <path d="M15.3 7.4 L16.7 5.9" />
+    <path d="M14.1 3.3 L16.7 5.9" />
+    <path d="M6 18.5 H11" />
   </g>,
   modifiedTablerIconProps,
 );
