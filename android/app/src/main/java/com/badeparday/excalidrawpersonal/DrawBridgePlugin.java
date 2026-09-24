@@ -46,6 +46,8 @@ public class DrawBridgePlugin extends Plugin {
     private static final int MAX_PENDING_OPEN_QUEUE = 10;
     private static long pendingOpenSequence = 0;
     private static JSObject latestStylusSnapshot;
+    private static final long STYLUS_MIN_INTERVAL_MS = 32;
+    private static long lastStylusEmitTime = 0;
 
     @Override
     public void load() {
@@ -326,6 +328,15 @@ public class DrawBridgePlugin extends Plugin {
                 return;
             }
 
+            if (
+                latestStylusSnapshot != null &&
+                isSameDiscreteStylusState(snapshot, latestStylusSnapshot) &&
+                snapshot.optLong("timestamp") - lastStylusEmitTime < STYLUS_MIN_INTERVAL_MS
+            ) {
+                return;
+            }
+
+            lastStylusEmitTime = snapshot.optLong("timestamp");
             latestStylusSnapshot = snapshot;
 
             if (instance != null) {
@@ -494,6 +505,17 @@ public class DrawBridgePlugin extends Plugin {
             && Math.abs(next.optDouble("pressure") - previous.optDouble("pressure")) < 0.05
             && Math.abs(next.optDouble("tiltX") - previous.optDouble("tiltX")) < 1.5
             && Math.abs(next.optDouble("tiltY") - previous.optDouble("tiltY")) < 1.5;
+    }
+
+    private static boolean isSameDiscreteStylusState(JSObject next, JSObject previous) {
+        if (previous == null) {
+            return false;
+        }
+
+        return next.optString("toolType").equals(previous.optString("toolType"))
+            && next.optString("pointerType").equals(previous.optString("pointerType"))
+            && next.optBoolean("hovering") == previous.optBoolean("hovering")
+            && next.optInt("buttonState") == previous.optInt("buttonState");
     }
 
     private static String mapToolType(int toolType) {
