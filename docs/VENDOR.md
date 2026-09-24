@@ -4,6 +4,21 @@ This procedure updates the vendored Excalidraw tree without losing local patches
 Do not perform an upstream refresh in the same commit as wrapper, storage,
 native, or dependency changes.
 
+## Generated declarations
+
+`vendor/*/dist` is gitignored build output, but the app typechecks against
+`vendor/*/dist/types`. A fresh clone therefore has no usable vendor types until
+they are generated. Run:
+
+- `npm run build:vendor-types`
+
+before `tsc -b` (the `build` script and CI already do this). The script emits
+declarations from the pinned vendored source into a temp dir, verifies the
+layout the package manifests expect, then swaps them in. The vendored sources
+carry pre-existing type errors, so the script tolerates a nonzero tsc exit as
+long as every expected declaration file is emitted; the app consumes them with
+`skipLibCheck` and never typechecks their contents.
+
 ## Current baseline
 
 - Upstream SHA: `1caec99b290c75cda05385e637138998807a65ae`

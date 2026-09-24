@@ -715,6 +715,11 @@ const loadSceneFromText = async (
   );
   return {
     ...scene,
+    // Restore output is trusted as scene data: Excalidraw's own restore
+    // pipeline produced it. The static shapes disagree at this pin because the
+    // vendored AppState infers element arrays wider than the scene-data type,
+    // so the assertion goes through unknown.
+    appState: scene.appState as unknown as LoadedSceneData["appState"],
     libraryItems,
     pageSettings: pageSettingsFromSceneText(text),
   };

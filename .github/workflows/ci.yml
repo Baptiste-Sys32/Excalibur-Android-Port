@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Build vendored type declarations
+        run: npm run build:vendor-types
       - name: Sync Excalidraw assets
         run: npm run sync:excalidraw-assets
       - name: Verify synced assets are clean

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "sync:excalidraw-assets": "node scripts/sync-excalidraw-assets.mjs",
-    "build": "npm run sync:excalidraw-assets && tsc -b && vite build",
+    "build:vendor-types": "node scripts/build-vendor-types.mjs",
+    "build": "npm run build:vendor-types && npm run sync:excalidraw-assets && tsc -b && vite build",
     "lint": "eslint src",
     "lint:all": "eslint . --no-ignore",
     "audit:prod": "npm audit --omit=dev",
