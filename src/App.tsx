@@ -50,6 +50,7 @@ import { CANVAS_TEMPLATES, type CanvasTemplate } from "./lib/templates";
 import {
   addIntentOpenListener,
   addStylusChangeListener,
+  clearPendingOpenSafe,
   getPendingOpenSafe,
   getStylusSnapshotSafe,
   openStorageDirectorySafe,
@@ -522,6 +523,7 @@ function App() {
   const libraryItemsRef = useRef<LibraryItems>([]);
   const autosaveTimerRef = useRef<number | null>(null);
   const persistInFlightRef = useRef<Promise<boolean> | null>(null);
+  const drainingRef = useRef(false);
   const thumbnailHydrationRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
   const lastAutosaveWarningAtRef = useRef(0);
@@ -557,6 +559,24 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.appTheme = theme;
     document.title = `${makeSceneTitle(sceneName)} · Escalidraw`;
+
+    const themeColor = theme === "dark" ? "#1b1d24" : "#f7f5f2";
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", themeColor);
+
+    if (isNativePlatform) {
+      void import("@capacitor/status-bar")
+        .then(({ StatusBar, Style }) =>
+          Promise.all([
+            StatusBar.setBackgroundColor({ color: themeColor }),
+            StatusBar.setStyle({
+              style: theme === "dark" ? Style.Dark : Style.Light,
+            }),
+          ]),
+        )
+        .catch(() => undefined);
+    }
   }, [sceneName, theme]);
 
   const showToast = useCallback((message: string) => {
@@ -1108,6 +1128,33 @@ function App() {
     [handlePendingOpen],
   );
 
+  const drainPendingOnResume = useCallback(async () => {
+    if (drainingRef.current) {
+      return;
+    }
+    drainingRef.current = true;
+
+    try {
+      const pendingOpens = await drainPendingOpenQueue();
+      if (pendingOpens.length === 0) {
+        return;
+      }
+
+      if (!apiRef.current) {
+        deferredPendingOpenRef.current = [
+          ...deferredPendingOpenRef.current,
+          ...pendingOpens,
+        ];
+        return;
+      }
+
+      await handleQueuedPendingOpens(pendingOpens);
+      await clearPendingOpenSafe();
+    } finally {
+      drainingRef.current = false;
+    }
+  }, [drainPendingOpenQueue, handleQueuedPendingOpens]);
+
   const applyStylusSnapshot = useCallback((snapshot: NativeStylusSnapshot | null) => {
     setNativeStylus(snapshot);
 
@@ -1474,6 +1521,10 @@ function App() {
           return;
         }
 
+        // Clear any poisoned pending payload so a crash loop on a malformed
+        // incoming file cannot repeat on every startup.
+        await clearPendingOpenSafe();
+
         const safeInitialData: ExcalidrawInitialDataState = {
           appState: { showWelcomeScreen: true },
           libraryItems: [],
@@ -1594,13 +1645,15 @@ function App() {
     const listenerPromise = AppPlugin.addListener("appStateChange", ({ isActive }) => {
       if (!isActive) {
         void persistCurrentScene(true);
+      } else {
+        void drainPendingOnResume();
       }
     });
 
     return () => {
       void listenerPromise.then((listener) => listener.remove());
     };
-  }, [persistCurrentScene]);
+  }, [drainPendingOnResume, persistCurrentScene]);
 
   const handleBackButton = useCallback(() => {
     const stack = backStackRef.current;
