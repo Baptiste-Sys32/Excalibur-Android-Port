@@ -23,6 +23,7 @@ import { ExportCenterModal } from "./components/ExportCenterModal";
 import { ImportAssistantModal } from "./components/ImportAssistantModal";
 import { PageSettingsModal } from "./components/PageSettingsModal";
 import { PageTemplateOverlay } from "./components/PageTemplateOverlay";
+import PenRoutingPill from "./components/PenRoutingPill";
 import StylusHoverOverlay from "./components/StylusHoverOverlay";
 import { TemplatePickerModal } from "./components/TemplatePickerModal";
 import { useWebBarrelFallback } from "./lib/useWebBarrelFallback";
@@ -2506,6 +2507,15 @@ function App() {
           zenModeEnabled={zenModeEnabled}
         />
       </Excalidraw>
+      {!zenModeEnabled && !viewModeEnabled ? (
+        <PenRoutingPill
+          penMode={penMode}
+          penDetected={penDetected}
+          onToggle={(next) => {
+            void updatePenMode(next);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
