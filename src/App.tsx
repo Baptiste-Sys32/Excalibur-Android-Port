@@ -30,7 +30,7 @@ import { TemplatePickerModal } from "./components/TemplatePickerModal";
 import { shouldInterceptTouch } from "./lib/touchRouting";
 import { useWebBarrelFallback } from "./lib/useWebBarrelFallback";
 import { isNativePlatform } from "./lib/capacitor";
-import type { ExportFormat } from "./lib/exports";
+import type { ExportCenterOptions } from "./lib/exports";
 import type { ImportFile, ImportPlan } from "./lib/imports";
 import {
   MAX_IMAGE_PIXELS,
@@ -2195,9 +2195,9 @@ function App() {
   }, [showToast]);
 
   const exportSelectedFormats = useCallback(
-    async (formats: readonly ExportFormat[]) => {
+    async (options: ExportCenterOptions) => {
       const currentApi = apiRef.current;
-      if (!currentApi || formats.length === 0) {
+      if (!currentApi || options.formats.length === 0) {
         return;
       }
 
@@ -2208,8 +2208,9 @@ function App() {
         const timestamp = formatExportTimestamp(new Date());
         let exportedCount = 0;
         let failedCount = 0;
+        let firstSharedExport: SavedExport | null = null;
 
-        for (const format of formats) {
+        for (const format of options.formats) {
           try {
             if (format === "excalidraw") {
               await saveTextExport(
@@ -2226,14 +2227,19 @@ function App() {
               const { exportToBlob } = await import("@excalidraw/excalidraw");
               const blob = await exportToBlob({
                 elements: exportPayload.elements,
-                appState: exportPayload.appState,
+                appState: {
+                  ...exportPayload.appState,
+                  exportBackground: options.background,
+                  exportScale: options.scale,
+                },
                 files: exportPayload.files,
                 mimeType: MIME_TYPES.png,
               });
-              await saveBlobExport(
+              const savedExport = await saveBlobExport(
                 suggestedFilename(`${title}-${timestamp}`, ".png"),
                 blob,
               );
+              firstSharedExport = firstSharedExport ?? savedExport;
               exportedCount += 1;
               continue;
             }
@@ -2242,13 +2248,18 @@ function App() {
               const { exportToSvg } = await import("@excalidraw/excalidraw");
               const svgElement = await exportToSvg({
                 elements: exportPayload.elements,
-                appState: exportPayload.appState,
+                appState: {
+                  ...exportPayload.appState,
+                  exportBackground: options.background,
+                  exportScale: options.scale,
+                },
                 files: exportPayload.files,
               });
-              await saveBlobExport(
+              const savedExport = await saveBlobExport(
                 suggestedFilename(`${title}-${timestamp}`, ".svg"),
                 new Blob([svgElement.outerHTML], { type: MIME_TYPES.svg }),
               );
+              firstSharedExport = firstSharedExport ?? savedExport;
               exportedCount += 1;
               continue;
             }
@@ -2258,11 +2269,13 @@ function App() {
               const blob = await createA4PdfBlob(
                 exportPayload,
                 pageSettingsRef.current,
+                options.scale,
               );
-              await saveBlobExport(
+              const savedExport = await saveBlobExport(
                 suggestedFilename(`${title}-${timestamp}`, ".pdf"),
                 blob,
               );
+              firstSharedExport = firstSharedExport ?? savedExport;
               exportedCount += 1;
             }
           } catch {
@@ -2281,6 +2294,10 @@ function App() {
           }`,
         );
         setExportCenterOpen(false);
+
+        if (options.shareAfter && firstSharedExport?.uri) {
+          await shareSavedExport(firstSharedExport, `Share ${title}`);
+        }
       } finally {
         setExportCenterBusy(false);
       }
@@ -2809,8 +2826,8 @@ function App() {
               setExportCenterOpen(false);
             }
           }}
-          onExport={(formats) => {
-            void exportSelectedFormats(formats);
+          onExport={(options) => {
+            void exportSelectedFormats(options);
           }}
         />
       ) : null}

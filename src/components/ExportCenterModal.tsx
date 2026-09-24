@@ -1,11 +1,15 @@
 import { useState } from "react";
 
-import type { ExportFormat } from "../lib/exports";
+import {
+  DEFAULT_EXPORT_CENTER_OPTIONS,
+  type ExportCenterOptions,
+  type ExportFormat,
+} from "../lib/exports";
 
 type ExportCenterModalProps = {
   busy: boolean;
   onClose: () => void;
-  onExport: (formats: ExportFormat[]) => void;
+  onExport: (options: ExportCenterOptions) => void;
 };
 
 const EXPORT_OPTIONS: Array<{
@@ -41,7 +45,16 @@ export function ExportCenterModal({
   onExport,
 }: ExportCenterModalProps) {
   const [formats, setFormats] = useState<Set<ExportFormat>>(
-    () => new Set(["excalidraw", "png", "svg", "pdf"]),
+    () => new Set(DEFAULT_EXPORT_CENTER_OPTIONS.formats),
+  );
+  const [scale, setScale] = useState<1 | 2 | 3>(
+    DEFAULT_EXPORT_CENTER_OPTIONS.scale,
+  );
+  const [background, setBackground] = useState(
+    DEFAULT_EXPORT_CENTER_OPTIONS.background,
+  );
+  const [shareAfter, setShareAfter] = useState(
+    DEFAULT_EXPORT_CENTER_OPTIONS.shareAfter,
   );
 
   const toggleFormat = (format: ExportFormat) => {
@@ -96,6 +109,52 @@ export function ExportCenterModal({
             </label>
           ))}
 
+          <div className="draw-directory-section-label">Scale</div>
+          <div className="draw-page-mode-toggle" role="group" aria-label="Export scale">
+            {([1, 2, 3] as const).map((option) => (
+              <button
+                key={option}
+                className="draw-page-mode-option"
+                type="button"
+                aria-pressed={scale === option}
+                disabled={busy}
+                onClick={() => setScale(option)}
+              >
+                <span className="draw-menu-button-label">{option}x</span>
+              </button>
+            ))}
+          </div>
+
+          <label className="draw-directory-entry draw-directory-entry--template draw-export-option">
+            <input
+              checked={background}
+              disabled={busy}
+              type="checkbox"
+              onChange={() => setBackground(!background)}
+            />
+            <span className="draw-directory-entry-text">
+              <span className="draw-menu-button-label">Background</span>
+              <span className="draw-menu-button-meta">
+                Include the canvas background color
+              </span>
+            </span>
+          </label>
+
+          <label className="draw-directory-entry draw-directory-entry--template draw-export-option">
+            <input
+              checked={shareAfter}
+              disabled={busy}
+              type="checkbox"
+              onChange={() => setShareAfter(!shareAfter)}
+            />
+            <span className="draw-directory-entry-text">
+              <span className="draw-menu-button-label">Share after saving</span>
+              <span className="draw-menu-button-meta">
+                Open the share sheet for the first export
+              </span>
+            </span>
+          </label>
+
           <div className="draw-directory-header-actions draw-directory-footer-actions">
             <button
               className="draw-directory-close"
@@ -109,7 +168,9 @@ export function ExportCenterModal({
               className="draw-directory-close draw-directory-primary-action"
               disabled={busy || formats.size === 0}
               type="button"
-              onClick={() => onExport([...formats])}
+              onClick={() =>
+                onExport({ formats: [...formats], scale, background, shareAfter })
+              }
             >
               {busy ? "Exporting..." : "Export selected"}
             </button>

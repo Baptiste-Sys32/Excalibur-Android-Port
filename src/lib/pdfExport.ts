@@ -232,6 +232,7 @@ const drawPageTemplate = (pdf: PdfDocument, pageSettings: PageSettings) => {
 export const createA4PdfBlob = async (
   payload: PdfScenePayload,
   pageSettings: PageSettings,
+  exportScale = 2,
 ) => {
   const [{ exportToCanvas }, { jsPDF }] = await Promise.all([
     import("@excalidraw/excalidraw"),
@@ -272,7 +273,7 @@ export const createA4PdfBlob = async (
       appState: {
         ...payload.appState,
         exportBackground: false,
-        exportScale: 2,
+        exportScale,
       },
       files: payload.files,
       exportingFrame: pageFrame as never,
