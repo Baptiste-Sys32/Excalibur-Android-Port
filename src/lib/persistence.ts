@@ -63,10 +63,13 @@ type NativeStorageDirectory =
 
 export type SavedSceneLocation = "external" | "documents" | "data";
 
+export type StylusButtonAction = "eraser" | "laser" | "selection" | "hand" | "none";
+
 export type DrawSettings = {
   preferNativeStylusBridge: boolean;
   forcePenMode: boolean;
   showPenHoverRing: boolean;
+  stylusButtonAction: StylusButtonAction;
 };
 
 export type SceneSnapshotMeta = {
@@ -152,7 +155,16 @@ export const DEFAULT_SETTINGS: DrawSettings = {
   preferNativeStylusBridge: true,
   forcePenMode: false,
   showPenHoverRing: true,
+  stylusButtonAction: "eraser",
 };
+
+const VALID_STYLUS_BUTTON_ACTIONS: ReadonlySet<string> = new Set([
+  "eraser",
+  "laser",
+  "selection",
+  "hand",
+  "none",
+]);
 
 const toWebDataKey = (path: string) => `${WEB_DATA_PREFIX}${path}`;
 
@@ -760,9 +772,15 @@ export const serializeLibrary = (libraryItems: LibraryItems) =>
 
 export const readSettings = async () => {
   const { value } = await Preferences.get({ key: PREFERENCE_KEYS.settings });
+  const stored = safeJsonParse<Partial<DrawSettings>>(value, {});
   return {
     ...DEFAULT_SETTINGS,
-    ...safeJsonParse<Partial<DrawSettings>>(value, {}),
+    ...stored,
+    stylusButtonAction: VALID_STYLUS_BUTTON_ACTIONS.has(
+      stored.stylusButtonAction ?? "",
+    )
+      ? (stored.stylusButtonAction as StylusButtonAction)
+      : DEFAULT_SETTINGS.stylusButtonAction,
   };
 };
 

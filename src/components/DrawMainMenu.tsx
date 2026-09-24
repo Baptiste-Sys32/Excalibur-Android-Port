@@ -7,7 +7,7 @@ import {
   getPageTemplateOption,
   type PageSettings,
 } from "../lib/pageSettings";
-import type { DrawSettings } from "../lib/persistence";
+import type { DrawSettings, StylusButtonAction } from "../lib/persistence";
 
 type DrawMainMenuProps = {
   openCanvas: () => void;
@@ -46,10 +46,34 @@ type DrawMainMenuProps = {
   toggleSnapMode: () => void;
   updatePenMode: (nextPenMode: boolean) => Promise<void>;
   updatePenHoverRingPreference: (enabled: boolean) => Promise<void>;
+  updateStylusButtonAction: (action: StylusButtonAction) => Promise<void>;
   updateStylusBridgePreference: (enabled: boolean) => Promise<void>;
 };
 
 const onOffLabel = (enabled: boolean) => (enabled ? "On" : "Off");
+
+const STYLUS_BUTTON_ACTIONS: StylusButtonAction[] = [
+  "eraser",
+  "laser",
+  "selection",
+  "hand",
+  "none",
+];
+
+const stylusButtonActionLabel = (action: StylusButtonAction) => {
+  switch (action) {
+    case "eraser":
+      return "Eraser";
+    case "laser":
+      return "Laser";
+    case "selection":
+      return "Select";
+    case "hand":
+      return "Pan";
+    case "none":
+      return "Off";
+  }
+};
 
 const formatTimestamp = (value: string | null) => {
   if (!value) {
@@ -258,6 +282,27 @@ export function DrawMainMenu(props: DrawMainMenuProps) {
               className={menuButtonClassName}
               type="button"
               onClick={() => {
+                const current = STYLUS_BUTTON_ACTIONS.indexOf(
+                  props.settings.stylusButtonAction,
+                );
+                const next =
+                  STYLUS_BUTTON_ACTIONS[
+                    (current + 1) % STYLUS_BUTTON_ACTIONS.length
+                  ];
+                void props.updateStylusButtonAction(next);
+              }}
+            >
+              <span className="draw-menu-button-label">S Pen button</span>
+              <span className="draw-menu-badge">
+                {stylusButtonActionLabel(props.settings.stylusButtonAction)}
+              </span>
+            </button>
+          </MainMenu.ItemCustom>
+          <MainMenu.ItemCustom>
+            <button
+              className={menuButtonClassName}
+              type="button"
+              onClick={() => {
                 void props.updateStylusBridgePreference(
                   !props.settings.preferNativeStylusBridge,
                 );
@@ -291,6 +336,10 @@ export function DrawMainMenu(props: DrawMainMenuProps) {
           <div>
             <span>Native tool</span>
             <strong>{props.nativeStylus?.toolType ?? "Unavailable"}</strong>
+          </div>
+          <div>
+            <span>Pen buttons</span>
+            <strong>{props.nativeStylus ? String(props.nativeStylus.buttonState) : "—"}</strong>
           </div>
         </div>
       </MainMenu.ItemCustom>

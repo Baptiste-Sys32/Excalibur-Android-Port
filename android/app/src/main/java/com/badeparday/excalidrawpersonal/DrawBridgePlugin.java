@@ -48,6 +48,9 @@ public class DrawBridgePlugin extends Plugin {
     private static JSObject latestStylusSnapshot;
     private static final long STYLUS_MIN_INTERVAL_MS = 32;
     private static long lastStylusEmitTime = 0;
+    // Android buttonState bit for the S Pen barrel (side) button.
+    // Kept separate from web PointerEvent button codes, where 32 means eraser.
+    private static final int BUTTON_STYLUS_PRIMARY_MASK = 32;
 
     @Override
     public void load() {
@@ -479,8 +482,18 @@ public class DrawBridgePlugin extends Plugin {
         snapshot.put("pointerType", mappedPointerType);
         snapshot.put("hovering", isHoverAction(event));
         snapshot.put("pressure", round(event.getPressure(0)));
-        snapshot.put("tiltX", round(event.getAxisValue(MotionEvent.AXIS_TILT, 0)));
-        snapshot.put("tiltY", round(event.getOrientation()));
+        double tilt = event.getAxisValue(MotionEvent.AXIS_TILT, 0);
+        double orientation = event.getOrientation();
+        double tiltXDeg = 0;
+        double tiltYDeg = 0;
+        if (tilt > 0) {
+            tiltXDeg = Math.sin(orientation) * tilt * 180.0 / Math.PI;
+            tiltYDeg = -Math.cos(orientation) * tilt * 180.0 / Math.PI;
+        }
+        snapshot.put("tiltX", round((float) tiltXDeg));
+        snapshot.put("tiltY", round((float) tiltYDeg));
+        snapshot.put("orientation", round((float) orientation));
+        snapshot.put("tilt", round((float) tilt));
         snapshot.put("buttonState", event.getButtonState());
         snapshot.put("timestamp", event.getEventTime());
         return snapshot;
@@ -503,8 +516,8 @@ public class DrawBridgePlugin extends Plugin {
             && next.optBoolean("hovering") == previous.optBoolean("hovering")
             && next.optInt("buttonState") == previous.optInt("buttonState")
             && Math.abs(next.optDouble("pressure") - previous.optDouble("pressure")) < 0.05
-            && Math.abs(next.optDouble("tiltX") - previous.optDouble("tiltX")) < 1.5
-            && Math.abs(next.optDouble("tiltY") - previous.optDouble("tiltY")) < 1.5;
+            && Math.abs(next.optDouble("tiltX") - previous.optDouble("tiltX")) < 3.0
+            && Math.abs(next.optDouble("tiltY") - previous.optDouble("tiltY")) < 3.0;
     }
 
     private static boolean isSameDiscreteStylusState(JSObject next, JSObject previous) {

@@ -25,6 +25,7 @@ import { PageSettingsModal } from "./components/PageSettingsModal";
 import { PageTemplateOverlay } from "./components/PageTemplateOverlay";
 import StylusHoverOverlay from "./components/StylusHoverOverlay";
 import { TemplatePickerModal } from "./components/TemplatePickerModal";
+import { useWebBarrelFallback } from "./lib/useWebBarrelFallback";
 import { isNativePlatform } from "./lib/capacitor";
 import type { ExportFormat } from "./lib/exports";
 import type { ImportFile, ImportPlan } from "./lib/imports";
@@ -94,6 +95,7 @@ import {
   type CanvasVersionMeta,
   type CustomCanvasTemplate,
   type DrawSettings,
+  type StylusButtonAction,
   type SavedSceneFile,
   type SavedExport,
   type ScenePayload,
@@ -491,7 +493,11 @@ function App() {
   const hasMeaningfulChangeRef = useRef(false);
   const lastSnapshotAtRef = useRef(0);
   const lastSnapshotSignatureRef = useRef("");
-  const forcedEraserToolRef = useRef<AppState["activeTool"] | null>(null);
+  const forcedEraserToolRef = useRef<{
+    previousTool: AppState["activeTool"];
+    overrideType: Exclude<StylusButtonAction, "none">;
+    reason: "barrel" | "inverted-eraser";
+  } | null>(null);
 
   useEffect(() => {
     apiRef.current = api;
@@ -1032,17 +1038,62 @@ function App() {
       });
     }
 
-    if (snapshot.toolType === "eraser") {
-      if (!forcedEraserToolRef.current && currentState.activeTool.type !== "eraser") {
-        forcedEraserToolRef.current = currentState.activeTool;
-        currentApi.setActiveTool({ type: "eraser" });
+    const isStylusLike =
+      snapshot.toolType === "stylus" || snapshot.toolType === "eraser";
+    // Bit 32 is the S Pen barrel button on modern firmware; bit 2 covers
+    // older firmware that aliases it to BUTTON_SECONDARY. Gated to stylus
+    // input so mouse right-click never triggers this path.
+    const barrelHeld =
+      isStylusLike && (snapshot.buttonState & (32 | 2)) !== 0;
+    const invertedEraser = snapshot.toolType === "eraser";
+    const override = forcedEraserToolRef.current;
+
+    const engageOverride = (
+      toolType: Exclude<StylusButtonAction, "none">,
+      reason: "barrel" | "inverted-eraser",
+    ) => {
+      if (override && override.reason === reason) {
+        return;
       }
+      if (!override && currentState.activeTool.type !== toolType) {
+        forcedEraserToolRef.current = {
+          previousTool: currentState.activeTool,
+          overrideType: toolType,
+          reason,
+        };
+        currentApi.setActiveTool({ type: toolType });
+      }
+    };
+
+    const releaseOverride = (reason: "barrel" | "inverted-eraser") => {
+      const active = forcedEraserToolRef.current;
+      if (!active || active.reason !== reason) {
+        return;
+      }
+      // Respect a manual tool switch made mid-hold.
+      if (currentState.activeTool.type === active.overrideType) {
+        currentApi.setActiveTool(active.previousTool);
+      }
+      forcedEraserToolRef.current = null;
+    };
+
+    // Inverted eraser always wins while active, independent of the setting.
+    if (invertedEraser) {
+      engageOverride("eraser", "inverted-eraser");
+    } else {
+      releaseOverride("inverted-eraser");
+    }
+
+    const action = settingsRef.current.stylusButtonAction;
+    if (action === "none") {
+      releaseOverride("barrel");
       return;
     }
 
-    if (forcedEraserToolRef.current) {
-      currentApi.setActiveTool(forcedEraserToolRef.current);
-      forcedEraserToolRef.current = null;
+    if (barrelHeld && !invertedEraser) {
+      engageOverride(action, "barrel");
+    } else {
+      releaseOverride("barrel");
     }
   }, []);
 
@@ -1093,6 +1144,25 @@ function App() {
     settingsRef.current = nextSettings;
     await persistSettings(nextSettings);
   }, []);
+
+  const updateStylusButtonAction = useCallback(
+    async (action: StylusButtonAction) => {
+      const nextSettings = {
+        ...settingsRef.current,
+        stylusButtonAction: action,
+      };
+
+      setSettings(nextSettings);
+      settingsRef.current = nextSettings;
+      await persistSettings(nextSettings);
+    },
+    [],
+  );
+
+  useWebBarrelFallback(
+    bootstrapped && (!isNativePlatform || !settings.preferNativeStylusBridge),
+    applyStylusSnapshot,
+  );
 
   const toggleTheme = useCallback(() => {
     const currentApi = apiRef.current;
@@ -2430,6 +2500,7 @@ function App() {
           toggleZenMode={toggleZenMode}
           updatePenMode={updatePenMode}
           updatePenHoverRingPreference={updatePenHoverRingPreference}
+          updateStylusButtonAction={updateStylusButtonAction}
           updateStylusBridgePreference={updateStylusBridgePreference}
           viewModeEnabled={viewModeEnabled}
           zenModeEnabled={zenModeEnabled}
