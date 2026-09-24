@@ -1,6 +1,8 @@
 :root {
   color-scheme: light;
   font-family: "Assistant", "Segoe UI", sans-serif;
+  --touch-target: 44px;
+  --touch-target-lg: 48px;
   --menu-surface: rgba(255, 255, 255, 0.9);
   --menu-surface-alt: rgba(244, 249, 255, 0.92);
   --menu-border: rgba(75, 94, 129, 0.2);
@@ -189,7 +191,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 2rem;
+  min-height: var(--touch-target);
   padding: 0 0.5rem;
   text-align: left;
   transition: background-color 120ms ease, box-shadow 120ms ease;
@@ -326,7 +328,9 @@ select {
   border-radius: var(--border-radius-md, 8px);
   background: transparent;
   color: inherit;
-  padding: 0.4rem 0.6rem;
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
+  padding: 0.6rem 0.8rem;
   cursor: pointer;
 }
 
@@ -421,7 +425,7 @@ select {
 
 .draw-directory-search,
 .draw-directory-select {
-  min-height: 2rem;
+  min-height: var(--touch-target);
   border-radius: var(--border-radius-md, 8px);
   border: 1px solid var(--menu-border, rgba(75, 94, 129, 0.2));
   background: var(--island-bg-color, #fff);
@@ -465,7 +469,7 @@ select {
   border-radius: var(--border-radius-md, 8px);
   background: transparent;
   color: var(--color-on-surface, inherit);
-  min-height: 2rem;
+  min-height: var(--touch-target);
   padding: 0 0.55rem;
   display: flex;
   justify-content: space-between;
@@ -569,10 +573,11 @@ select {
 .draw-directory-entry-actions {
   display: flex;
   flex: 0 0 auto;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  row-gap: 6px;
   white-space: nowrap;
 }
 
@@ -582,7 +587,8 @@ select {
   border-radius: var(--border-radius-md, 8px);
   background: transparent;
   color: var(--color-on-surface, inherit);
-  min-height: 1.85rem;
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
   padding: 0 0.5rem;
   cursor: pointer;
 }
@@ -651,6 +657,20 @@ select {
 
 .draw-directory-entry:active {
   box-shadow: 0 0 0 1px var(--color-brand-active, rgba(69, 101, 159, 0.5));
+}
+
+.draw-directory-primary-action,
+.draw-directory-danger-action {
+  min-height: var(--touch-target-lg);
+}
+
+.draw-menu-button:focus-visible,
+.draw-directory-close:focus-visible,
+.draw-directory-entry:focus-visible,
+.draw-directory-entry-actions button:focus-visible,
+.draw-directory-version:focus-visible {
+  outline: 2px solid var(--color-brand-active, rgba(69, 101, 159, 0.5));
+  outline-offset: 2px;
 }
 
 .draw-directory-entry:disabled,
@@ -749,6 +769,31 @@ html[data-app-theme="dark"] .draw-menu-badge {
   background: rgba(255, 255, 255, 0.08);
 }
 
+@media (min-width: 769px) and (max-width: 1180px) {
+  .draw-directory-modal {
+    width: min(680px, calc(100vw - 32px));
+  }
+
+  .draw-directory-modal--wide {
+    width: min(960px, calc(100vw - 32px));
+  }
+
+  .draw-directory-modal-body {
+    padding: 12px;
+    gap: 6px;
+  }
+
+  .draw-import-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1181px) {
+  .draw-directory-modal--wide {
+    width: min(1024px, calc(100vw - 32px));
+  }
+}
+
 @media (max-width: 768px) {
   .draw-loading-card {
     padding: 26px 22px;
@@ -778,8 +823,28 @@ html[data-app-theme="dark"] .draw-menu-badge {
 
   .draw-directory-entry-actions {
     justify-content: flex-start;
-    padding-inline-start: 62px;
-    overflow-x: auto;
+    padding-inline-start: 0;
+    overflow-x: visible;
+  }
+
+  .draw-directory-footer-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--island-bg-color, #fff);
+    padding: 12px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (pointer: coarse) {
+  .draw-menu-button,
+  .draw-directory-entry {
+    padding-block: 0.6rem;
+  }
+
+  input,
+  select,
+  button {
+    touch-action: manipulation;
   }
 }
 
