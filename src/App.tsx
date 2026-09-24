@@ -46,7 +46,6 @@ import { CANVAS_TEMPLATES, type CanvasTemplate } from "./lib/templates";
 import {
   addIntentOpenListener,
   addStylusChangeListener,
-  clearPendingOpenSafe,
   getPendingOpenSafe,
   getStylusSnapshotSafe,
   openStorageDirectorySafe,
@@ -474,7 +473,7 @@ function App() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const latestSceneRef = useRef<ScenePayload | null>(null);
   const currentSavedSceneRef = useRef<SavedSceneFile | null>(null);
-  const deferredPendingOpenRef = useRef<PendingOpenPayload | null>(null);
+  const deferredPendingOpenRef = useRef<PendingOpenPayload[]>([]);
   const refreshSavedScenesRef = useRef<(() => Promise<void>) | null>(null);
   const recentsRef = useRef<SceneSnapshotMeta[]>([]);
   const settingsRef = useRef<DrawSettings>(DEFAULT_SETTINGS);
@@ -983,6 +982,29 @@ function App() {
     [processImportFiles, showToast],
   );
 
+  const drainPendingOpenQueue = useCallback(async () => {
+    const pendingOpens: PendingOpenPayload[] = [];
+
+    for (;;) {
+      const pendingOpen = await getPendingOpenSafe();
+      if (!pendingOpen) {
+        break;
+      }
+      pendingOpens.push(pendingOpen);
+    }
+
+    return pendingOpens;
+  }, []);
+
+  const handleQueuedPendingOpens = useCallback(
+    async (pendingOpens: readonly PendingOpenPayload[]) => {
+      for (const pendingOpen of pendingOpens) {
+        await handlePendingOpen(pendingOpen);
+      }
+    },
+    [handlePendingOpen],
+  );
+
   const applyStylusSnapshot = useCallback((snapshot: NativeStylusSnapshot | null) => {
     setNativeStylus(snapshot);
 
@@ -1217,16 +1239,15 @@ function App() {
 
     const bootstrap = async () => {
       try {
-        const pendingOpen = await getPendingOpenSafe();
-        const deferPendingOpen = shouldDeferPendingOpen(pendingOpen);
-        if (deferPendingOpen) {
-          deferredPendingOpenRef.current = pendingOpen;
-        }
-
-        const nextBootstrap = await loadAppBootstrap(
-          deferPendingOpen ? null : pendingOpen,
+        const pendingOpens = await drainPendingOpenQueue();
+        const immediateOpen =
+          pendingOpens.find((pendingOpen) => !shouldDeferPendingOpen(pendingOpen)) ??
+          null;
+        deferredPendingOpenRef.current = pendingOpens.filter(
+          (pendingOpen) => pendingOpen !== immediateOpen,
         );
-        await clearPendingOpenSafe();
+
+        const nextBootstrap = await loadAppBootstrap(immediateOpen);
 
         if (cancelled) {
           return;
@@ -1277,7 +1298,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [drainPendingOpenQueue]);
 
   useEffect(() => {
     if (!api || !bootstrapNotice) {
@@ -1289,14 +1310,14 @@ function App() {
   }, [api, bootstrapNotice, showToast]);
 
   useEffect(() => {
-    if (!api || !bootstrapped || !deferredPendingOpenRef.current) {
+    if (!api || !bootstrapped || deferredPendingOpenRef.current.length === 0) {
       return;
     }
 
-    const pendingOpen = deferredPendingOpenRef.current;
-    deferredPendingOpenRef.current = null;
-    void handlePendingOpen(pendingOpen);
-  }, [api, bootstrapped, handlePendingOpen]);
+    const pendingOpens = deferredPendingOpenRef.current;
+    deferredPendingOpenRef.current = [];
+    void handleQueuedPendingOpens(pendingOpens);
+  }, [api, bootstrapped, handleQueuedPendingOpens]);
 
   useEffect(() => {
     if (!bootstrapped || !api || !initialData) {
@@ -1334,9 +1355,11 @@ function App() {
     let disposed = false;
 
     const register = async () => {
-      const intentListener = await addIntentOpenListener((pendingOpen) => {
+      const intentListener = await addIntentOpenListener(() => {
         if (!disposed) {
-          void handlePendingOpen(pendingOpen);
+          void drainPendingOpenQueue().then((pendingOpens) =>
+            handleQueuedPendingOpens(pendingOpens),
+          );
         }
       });
       const stylusListener = await addStylusChangeListener((snapshot) => {
@@ -1361,7 +1384,7 @@ function App() {
       disposed = true;
       cleanup();
     };
-  }, [applyStylusSnapshot, bootstrapped, handlePendingOpen]);
+  }, [applyStylusSnapshot, bootstrapped, drainPendingOpenQueue, handleQueuedPendingOpens]);
 
   useEffect(() => {
     const listenerPromise = AppPlugin.addListener("appStateChange", ({ isActive }) => {
