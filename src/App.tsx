@@ -23,6 +23,7 @@ import { ExportCenterModal } from "./components/ExportCenterModal";
 import { ImportAssistantModal } from "./components/ImportAssistantModal";
 import { PageSettingsModal } from "./components/PageSettingsModal";
 import { PageTemplateOverlay } from "./components/PageTemplateOverlay";
+import StylusHoverOverlay from "./components/StylusHoverOverlay";
 import { TemplatePickerModal } from "./components/TemplatePickerModal";
 import { isNativePlatform } from "./lib/capacitor";
 import type { ExportFormat } from "./lib/exports";
@@ -1075,6 +1076,17 @@ function App() {
     const nextSettings = {
       ...settingsRef.current,
       preferNativeStylusBridge: enabled,
+    };
+
+    setSettings(nextSettings);
+    settingsRef.current = nextSettings;
+    await persistSettings(nextSettings);
+  }, []);
+
+  const updatePenHoverRingPreference = useCallback(async (enabled: boolean) => {
+    const nextSettings = {
+      ...settingsRef.current,
+      showPenHoverRing: enabled,
     };
 
     setSettings(nextSettings);
@@ -2358,6 +2370,7 @@ function App() {
       ) : null}
 
       <PageTemplateOverlay pageSettings={pageSettings} viewport={pageViewport} />
+      <StylusHoverOverlay stylus={nativeStylus} enabled={settings.showPenHoverRing} />
 
       <Excalidraw
         initialData={initialData}
@@ -2416,6 +2429,7 @@ function App() {
           toggleViewMode={toggleViewMode}
           toggleZenMode={toggleZenMode}
           updatePenMode={updatePenMode}
+          updatePenHoverRingPreference={updatePenHoverRingPreference}
           updateStylusBridgePreference={updateStylusBridgePreference}
           viewModeEnabled={viewModeEnabled}
           zenModeEnabled={zenModeEnabled}

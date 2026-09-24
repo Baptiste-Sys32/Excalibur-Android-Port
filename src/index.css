@@ -782,3 +782,56 @@ html[data-app-theme="dark"] .draw-menu-badge {
     overflow-x: auto;
   }
 }
+
+.draw-stylus-hover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  will-change: transform;
+}
+
+.draw-stylus-hover[data-visible="true"] {
+  opacity: var(--hover-opacity, 0.7);
+}
+
+.draw-stylus-hover-ring {
+  width: var(--hover-diameter, 19px);
+  height: var(--hover-diameter, 19px);
+  margin-left: calc(var(--hover-diameter, 19px) / -2);
+  margin-top: calc(var(--hover-diameter, 19px) / -2);
+  border: 1.5px solid rgba(80, 101, 139, 0.75);
+  border-radius: 999px;
+}
+
+.draw-stylus-hover[data-tool="eraser"] .draw-stylus-hover-ring {
+  border-radius: 4px;
+  border-style: dashed;
+}
+
+.draw-stylus-hover-dot {
+  position: absolute;
+  left: -1.5px;
+  top: -1.5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(80, 101, 139, 0.9);
+}
+
+html[data-app-theme="dark"] .draw-stylus-hover-ring {
+  border-color: rgba(232, 238, 255, 0.8);
+}
+
+html[data-app-theme="dark"] .draw-stylus-hover-dot {
+  background: rgba(232, 238, 255, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-stylus-hover {
+    transition: none;
+  }
+}

@@ -66,6 +66,7 @@ export type SavedSceneLocation = "external" | "documents" | "data";
 export type DrawSettings = {
   preferNativeStylusBridge: boolean;
   forcePenMode: boolean;
+  showPenHoverRing: boolean;
 };
 
 export type SceneSnapshotMeta = {
@@ -150,6 +151,7 @@ export type DeleteSavedSceneSummary = {
 export const DEFAULT_SETTINGS: DrawSettings = {
   preferNativeStylusBridge: true,
   forcePenMode: false,
+  showPenHoverRing: true,
 };
 
 const toWebDataKey = (path: string) => `${WEB_DATA_PREFIX}${path}`;
