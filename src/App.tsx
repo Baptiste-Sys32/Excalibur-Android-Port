@@ -1234,7 +1234,10 @@ function App() {
 
     if (barrelHeld && !invertedEraser) {
       engageOverride(action, "barrel");
-    } else {
+    } else if (snapshot.hovering) {
+      // Release only on hover-without-bit: contact snapshots often omit the
+      // barrel bit on some firmware, and that must not cancel an active hold
+      // mid-stroke. The override drops as soon as the pen hovers unpressed.
       releaseOverride("barrel");
     }
   }, []);
