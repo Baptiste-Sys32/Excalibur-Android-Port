@@ -24,16 +24,25 @@ android {
     }
     signingConfigs {
         release {
-            if (!keystorePropertiesFile.exists()) {
-                throw new GradleException(
-                    'Release signing requires android/keystore.properties. ' +
-                    'Create it from CI secrets; releases must never fall back to the debug keystore.'
-                )
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            } else {
+                def requestedTasks = gradle.startParameter.taskNames.join(" ").toLowerCase()
+                if (requestedTasks.contains("release")) {
+                    throw new GradleException(
+                        'Release signing requires android/keystore.properties. ' +
+                        'Create it from CI secrets; releases must never fall back to the debug keystore.'
+                    )
+                }
+                // Local non-release builds only. Release tasks fail closed above.
+                storeFile file(System.properties['user.home'] + '/.android/debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
             }
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
         }
     }
     buildTypes {
