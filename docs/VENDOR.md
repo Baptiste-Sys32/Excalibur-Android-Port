@@ -19,6 +19,29 @@ carry pre-existing type errors, so the script tolerates a nonzero tsc exit as
 long as every expected declaration file is emitted; the app consumes them with
 `skipLibCheck` and never typechecks their contents.
 
+## 0.18.1 backport verification (2026-09-24)
+
+Do NOT replace the vendored tree with upstream tag `v0.18.1`
+(`a2ec2889`). That tag predates the vendored master base: it has no
+highlighter tool, no eraser modes, and no PlantUML support, all of which the
+app relies on. A tree replacement would be a feature downgrade.
+
+Instead, the security substance of the 0.18.1 backport (`GHSA-39h7-pwv7-rc3x`)
+was verified present in the current tree:
+
+- `@excalidraw/mermaid-to-excalidraw` is `2.2.2`
+  (`vendor/excalidraw/package.json:91`), the exact patched dependency.
+- Locked transitive `mermaid` is `11.14.0` (`package-lock.json`), past the
+  `11.10.0` fix for the underlying `CVE-2025-54881`.
+- Both `files = {}` hardening lines from the backport are present:
+  - `vendor/excalidraw/components/App.tsx` (Mermaid paste path).
+  - `vendor/excalidraw/components/TTDDialog/common.ts:136` (dialog path).
+
+The `0.18.0` version stamp therefore trips version-based SCA tooling, but the
+vulnerable code path is already fixed in-tree. Revisit only when moving the
+vendor base forward to a newer upstream master, never by checking out the
+`v0.18.1` tag over the current tree.
+
 ## Current baseline
 
 - Upstream SHA: `1caec99b290c75cda05385e637138998807a65ae`
