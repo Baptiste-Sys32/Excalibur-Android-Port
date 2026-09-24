@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+
 import type { CanvasTemplate } from "../lib/templates";
 import type { CustomCanvasTemplate } from "../lib/persistence";
 
@@ -18,6 +20,31 @@ export function TemplatePickerModal({
   onSelect,
   templates,
 }: TemplatePickerModalProps) {
+  const [query, setQuery] = useState("");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleBundled = useMemo(
+    () =>
+      normalizedQuery
+        ? templates.filter(
+            (template) =>
+              template.name.toLowerCase().includes(normalizedQuery) ||
+              template.description.toLowerCase().includes(normalizedQuery),
+          )
+        : templates,
+    [normalizedQuery, templates],
+  );
+  const visibleCustom = useMemo(
+    () =>
+      normalizedQuery
+        ? customTemplates.filter(
+            (template) =>
+              template.name.toLowerCase().includes(normalizedQuery) ||
+              template.description.toLowerCase().includes(normalizedQuery),
+          )
+        : customTemplates,
+    [normalizedQuery, customTemplates],
+  );
   return (
     <div className="draw-directory-modal-backdrop" onClick={onClose}>
       <div
@@ -38,8 +65,19 @@ export function TemplatePickerModal({
         </div>
 
         <div className="draw-directory-modal-body">
+          <input
+            aria-label="Search templates"
+            className="draw-directory-search"
+            placeholder="Search templates"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <div className="draw-directory-section-label">Bundled</div>
-          {templates.map((template) => (
+          {visibleBundled.length === 0 ? (
+            <p className="draw-directory-empty">No bundled templates match.</p>
+          ) : (
+            visibleBundled.map((template) => (
             <button
               key={template.id}
               className="draw-directory-entry draw-directory-entry--template"
@@ -53,13 +91,18 @@ export function TemplatePickerModal({
                 </span>
               </span>
             </button>
-          ))}
+            ))
+          )}
 
           <div className="draw-directory-section-label">Custom</div>
-          {customTemplates.length === 0 ? (
-            <p className="draw-directory-empty">No custom templates saved yet.</p>
+          {visibleCustom.length === 0 ? (
+            <p className="draw-directory-empty">
+              {customTemplates.length === 0
+                ? "No custom templates saved yet."
+                : "No custom templates match."}
+            </p>
           ) : (
-            customTemplates.map((template) => (
+            visibleCustom.map((template) => (
               <div
                 key={template.id}
                 className="draw-directory-entry draw-directory-entry--canvas"
@@ -69,6 +112,13 @@ export function TemplatePickerModal({
                   type="button"
                   onClick={() => onSelect(template)}
                 >
+                  <span className="draw-directory-thumbnail" aria-hidden="true">
+                    {template.thumbnailUri ? (
+                      <img src={template.thumbnailUri} alt="" />
+                    ) : (
+                      <span>{template.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </span>
                   <span className="draw-directory-entry-text">
                     <span className="draw-menu-button-label">
                       {template.name}

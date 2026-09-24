@@ -128,6 +128,7 @@ export type CustomCanvasTemplate = {
   source: "custom";
   createdAt: string;
   updatedAt: string;
+  thumbnailUri?: string | null;
   initialData: ExcalidrawInitialDataState;
 };
 
@@ -1760,6 +1761,57 @@ export const saveImportedLibraryFile = async (filename: string, text: string) =>
 const customTemplatePath = (id: string) =>
   `${APP_PATHS.customTemplateDir}/${id}.excalidraw`;
 
+const customTemplateThumbnailPath = (id: string) =>
+  `${APP_PATHS.thumbnailDir}/template-${id}.txt`;
+
+const readCustomTemplateThumbnail = async (id: string) =>
+  readDataText(customTemplateThumbnailPath(id));
+
+export const persistCustomTemplateThumbnail = async (
+  id: string,
+  thumbnailUri: string,
+) => {
+  await writeDataText(customTemplateThumbnailPath(id), thumbnailUri);
+};
+
+const templateThumbnailFromElements = async (
+  elements: readonly OrderedExcalidrawElement[],
+  appState: AppState,
+  files: BinaryFiles,
+): Promise<string | null> => {
+  const visible = elements.filter((element) => !element.isDeleted);
+  if (visible.length === 0) {
+    return null;
+  }
+
+  try {
+    const { exportToBlob } = await import("@excalidraw/excalidraw");
+    const blob = await exportToBlob({
+      elements: visible as never,
+      appState,
+      files: (files ?? {}) as BinaryFiles,
+      maxWidthOrHeight: 160,
+      exportPadding: 12,
+      mimeType: MIME_TYPES.png,
+    });
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
+      reader.onload = () => {
+        if (typeof reader.result !== "string") {
+          reject(new Error("Could not load thumbnail data"));
+          return;
+        }
+        resolve(reader.result);
+      };
+      reader.readAsDataURL(blob);
+    });
+    return dataUrl;
+  } catch {
+    return null;
+  }
+};
+
 export const listCustomTemplates = async (): Promise<CustomCanvasTemplate[]> => {
   const index = await readCustomTemplateIndex();
   const templates: CustomCanvasTemplate[] = [];
@@ -1780,6 +1832,7 @@ export const listCustomTemplates = async (): Promise<CustomCanvasTemplate[]> => 
         source: "custom",
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt,
+        thumbnailUri: await readCustomTemplateThumbnail(entry.id),
         initialData: await loadSceneFromText(serializedScene, []),
       });
     } catch {
@@ -1805,6 +1858,7 @@ export const saveCustomTemplate = async (options: {
   name: string;
   description: string;
   serializedScene: string;
+  thumbnailUri?: string | null;
 }) => {
   const index = await readCustomTemplateIndex();
   const id = makeStableId();
@@ -1820,6 +1874,9 @@ export const saveCustomTemplate = async (options: {
   };
 
   await writeDataText(entry.path, options.serializedScene);
+  if (options.thumbnailUri) {
+    await persistCustomTemplateThumbnail(id, options.thumbnailUri);
+  }
   await writeCustomTemplateIndex([entry, ...index]);
 
   return {
@@ -1829,8 +1886,43 @@ export const saveCustomTemplate = async (options: {
     source: "custom" as const,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
+    thumbnailUri: options.thumbnailUri ?? null,
     initialData: await loadSceneFromText(options.serializedScene, []),
   };
+};
+
+export const backfillCustomTemplateThumbnails = async () => {
+  const index = await readCustomTemplateIndex();
+  let backfilled = 0;
+
+  for (const entry of index) {
+    if (await readDataText(customTemplateThumbnailPath(entry.id))) {
+      continue;
+    }
+
+    const serializedScene = await readDataText(entry.path);
+    if (!serializedScene) {
+      continue;
+    }
+
+    try {
+      const scene = await loadSceneFromText(serializedScene, []);
+      const thumbnailUri = await templateThumbnailFromElements(
+        (scene.elements as readonly OrderedExcalidrawElement[] | undefined) ??
+          [],
+        scene.appState as AppState,
+        (scene.files ?? {}) as BinaryFiles,
+      );
+      if (thumbnailUri) {
+        await persistCustomTemplateThumbnail(entry.id, thumbnailUri);
+        backfilled += 1;
+      }
+    } catch {
+      // Best-effort; a missing preview never blocks the gallery.
+    }
+  }
+
+  return backfilled;
 };
 
 export const renameCustomTemplate = async (
@@ -1855,6 +1947,7 @@ export const deleteCustomTemplate = async (template: CustomCanvasTemplate) => {
   const index = await readCustomTemplateIndex();
   const entry = index.find((item) => item.id === template.id);
   await removeDataFile(entry?.path ?? customTemplatePath(template.id));
+  await removeDataFile(customTemplateThumbnailPath(template.id));
   await writeCustomTemplateIndex(
     index.filter((item) => item.id !== template.id),
   );

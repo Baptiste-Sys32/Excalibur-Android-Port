@@ -62,6 +62,7 @@ import {
 import {
   DEFAULT_SETTINGS,
   deleteCustomTemplate,
+  backfillCustomTemplateThumbnails,
   createBackupZip,
   deleteSavedScene,
   duplicateSavedScene,
@@ -2347,10 +2348,34 @@ function App() {
     }
 
     try {
+      const serializedScene = serializeScene(payload, pageSettingsRef.current);
+      const { exportToBlob } = await import("@excalidraw/excalidraw");
+      const visibleElements = payload.elements.filter(
+        (element) => !element.isDeleted,
+      );
+      let thumbnailUri: string | null = null;
+
+      if (visibleElements.length > 0) {
+        try {
+          const blob = await exportToBlob({
+            elements: visibleElements as never,
+            appState: payload.appState,
+            files: payload.files,
+            maxWidthOrHeight: 160,
+            exportPadding: 12,
+            mimeType: MIME_TYPES.png,
+          });
+          thumbnailUri = await blobToDataUrl(blob);
+        } catch {
+          thumbnailUri = null;
+        }
+      }
+
       await saveCustomTemplate({
         name,
         description: requestedDescription,
-        serializedScene: serializeScene(payload, pageSettingsRef.current),
+        serializedScene,
+        thumbnailUri,
       });
       await refreshCustomTemplates();
       showToast(`Saved template ${name}`);
@@ -2358,6 +2383,17 @@ function App() {
       showToast("Could not save template");
     }
   }, [refreshCustomTemplates, showPrompt, showToast]);
+
+  const openTemplatePicker = useCallback(async () => {
+    setTemplatePickerOpen(true);
+    try {
+      if ((await backfillCustomTemplateThumbnails()) > 0) {
+        await refreshCustomTemplates();
+      }
+    } catch {
+      // Missing previews never block the gallery.
+    }
+  }, [refreshCustomTemplates]);
 
   const renameTemplate = useCallback(
     async (template: CustomCanvasTemplate) => {
@@ -2826,7 +2862,9 @@ function App() {
           openFiles={openFiles}
           openDirectory={openDirectory}
           openPageSettings={() => setPageSettingsOpen(true)}
-          openTemplates={() => setTemplatePickerOpen(true)}
+          openTemplates={() => {
+            void openTemplatePicker();
+          }}
           pageSettings={pageSettings}
           penDetected={penDetected}
           penMode={penMode}
