@@ -479,6 +479,29 @@ function App() {
     resolve: (value: string | boolean | null) => void;
     invoker: HTMLElement | null;
   } | null>(null);
+  const backStackRef = useRef({
+    busy: false,
+    sheetKind: null as "prompt" | "confirm" | null,
+    exportCenterOpen: false,
+    importAssistantOpen: false,
+    backupCenterOpen: false,
+    pageSettingsOpen: false,
+    templatePickerOpen: false,
+    canvasDirectoryOpen: false,
+  });
+
+  useEffect(() => {
+    backStackRef.current = {
+      busy: exportCenterBusy || importAssistantBusy || backupBusy,
+      sheetKind: sheetState?.request.kind ?? null,
+      exportCenterOpen,
+      importAssistantOpen: importAssistantPlan !== null,
+      backupCenterOpen,
+      pageSettingsOpen,
+      templatePickerOpen,
+      canvasDirectoryOpen,
+    };
+  });
   const [activeTimelineScene, setActiveTimelineScene] =
     useState<SavedSceneFile | null>(null);
   const [canvasVersions, setCanvasVersions] = useState<CanvasVersionMeta[]>([]);
@@ -1578,6 +1601,111 @@ function App() {
       void listenerPromise.then((listener) => listener.remove());
     };
   }, [persistCurrentScene]);
+
+  const handleBackButton = useCallback(() => {
+    const stack = backStackRef.current;
+
+    if (stack.busy) {
+      showToast("Wait for the current operation to finish");
+      return;
+    }
+
+    if (stack.sheetKind) {
+      resolveSheet(stack.sheetKind === "prompt" ? null : false);
+      return;
+    }
+
+    if (stack.exportCenterOpen) {
+      setExportCenterOpen(false);
+      return;
+    }
+    if (stack.importAssistantOpen) {
+      setImportAssistantPlan(null);
+      return;
+    }
+    if (stack.backupCenterOpen) {
+      setBackupCenterOpen(false);
+      return;
+    }
+    if (stack.pageSettingsOpen) {
+      setPageSettingsOpen(false);
+      return;
+    }
+    if (stack.templatePickerOpen) {
+      setTemplatePickerOpen(false);
+      return;
+    }
+    if (stack.canvasDirectoryOpen) {
+      thumbnailHydrationRef.current += 1;
+      setCanvasDirectoryOpen(false);
+      return;
+    }
+
+    const currentApi = apiRef.current;
+    if (currentApi) {
+      currentApi.updateScene({
+        appState: {
+          openDialog: null,
+          openSidebar: null,
+          openMenu: null,
+          openPopup: null,
+          contextMenu: null,
+        },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+
+      const openMenu = document.querySelector(
+        '.dropdown-menu[data-state="open"]',
+      );
+      if (openMenu) {
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        return;
+      }
+
+      const appState = currentApi.getAppState();
+      if (appState.cursorButton === "up") {
+        if (
+          appState.editingTextElement ||
+          Object.keys(appState.selectedElementIds ?? {}).length > 0 ||
+          appState.selectedLinearElement
+        ) {
+          currentApi.updateScene({
+            appState: {
+              selectedElementIds: {},
+              editingTextElement: null,
+              selectedLinearElement: null,
+            },
+            captureUpdate: CaptureUpdateAction.NEVER,
+          });
+          return;
+        }
+        if (appState.activeTool.type !== "selection") {
+          currentApi.setActiveTool({ type: "selection" });
+          return;
+        }
+      }
+    }
+
+    void persistCurrentScene(true).finally(() => {
+      void AppPlugin.exitApp();
+    });
+  }, [persistCurrentScene, resolveSheet, showToast]);
+
+  useEffect(() => {
+    if (!isNativePlatform) {
+      return;
+    }
+
+    const listenerPromise = AppPlugin.addListener("backButton", () => {
+      handleBackButton();
+    });
+
+    return () => {
+      void listenerPromise.then((listener) => listener.remove());
+    };
+  }, [handleBackButton]);
 
   useEffect(() => {
     return () => {
