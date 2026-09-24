@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Locale;
 
@@ -41,7 +42,9 @@ public class DrawBridgePlugin extends Plugin {
         "com.android.documentsui"
     };
     private static DrawBridgePlugin instance;
-    private static JSObject pendingOpenPayload;
+    private static final ArrayDeque<JSObject> pendingOpenQueue = new ArrayDeque<>();
+    private static final int MAX_PENDING_OPEN_QUEUE = 10;
+    private static long pendingOpenSequence = 0;
     private static JSObject latestStylusSnapshot;
 
     @Override
@@ -64,8 +67,9 @@ public class DrawBridgePlugin extends Plugin {
     public void getPendingOpen(PluginCall call) {
         JSObject result = new JSObject();
         synchronized (LOCK) {
-            if (pendingOpenPayload != null) {
-                result.put("pendingOpen", pendingOpenPayload);
+            JSObject pendingOpen = pendingOpenQueue.pollFirst();
+            if (pendingOpen != null) {
+                result.put("pendingOpen", pendingOpen);
             }
         }
         call.resolve(result);
@@ -74,7 +78,7 @@ public class DrawBridgePlugin extends Plugin {
     @PluginMethod
     public void clearPendingOpen(PluginCall call) {
         synchronized (LOCK) {
-            pendingOpenPayload = null;
+            pendingOpenQueue.clear();
         }
         call.resolve();
     }
@@ -294,7 +298,14 @@ public class DrawBridgePlugin extends Plugin {
         }
 
         synchronized (LOCK) {
-            pendingOpenPayload = payload;
+            pendingOpenSequence += 1;
+            payload.put("id", "pending-open-" + pendingOpenSequence);
+            payload.put("receivedAt", System.currentTimeMillis());
+
+            while (pendingOpenQueue.size() >= MAX_PENDING_OPEN_QUEUE) {
+                pendingOpenQueue.pollFirst();
+            }
+            pendingOpenQueue.addLast(payload);
 
             if (instance != null) {
                 JSObject event = new JSObject();
