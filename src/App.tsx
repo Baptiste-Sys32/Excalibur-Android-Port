@@ -27,6 +27,7 @@ import { PageTemplateOverlay } from "./components/PageTemplateOverlay";
 import PenRoutingPill from "./components/PenRoutingPill";
 import StylusHoverOverlay from "./components/StylusHoverOverlay";
 import { TemplatePickerModal } from "./components/TemplatePickerModal";
+import { shouldInterceptTouch } from "./lib/touchRouting";
 import { useWebBarrelFallback } from "./lib/useWebBarrelFallback";
 import { isNativePlatform } from "./lib/capacitor";
 import type { ExportFormat } from "./lib/exports";
@@ -509,6 +510,7 @@ function App() {
   const [canvasVersionsLoading, setCanvasVersionsLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const latestSceneRef = useRef<ScenePayload | null>(null);
   const currentSavedSceneRef = useRef<SavedSceneFile | null>(null);
@@ -1298,6 +1300,62 @@ function App() {
     },
     [],
   );
+
+  const updatePenOnlyTouchNeverDraws = useCallback(
+    async (enabled: boolean) => {
+      const nextSettings = {
+        ...settingsRef.current,
+        penOnlyTouchNeverDraws: enabled,
+      };
+
+      setSettings(nextSettings);
+      settingsRef.current = nextSettings;
+      await persistSettings(nextSettings);
+
+      if (enabled) {
+        await updatePenMode(true);
+      }
+    },
+    [updatePenMode],
+  );
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) {
+      return;
+    }
+
+    // Native capture listener runs before Excalidraw's own canvas handlers.
+    // In pen-only mode, touch pointerdowns on content-creating tools never
+    // reach the editor, so palms and stray fingers create nothing.
+    const onPointerDown = (event: PointerEvent) => {
+      const currentApi = apiRef.current;
+      if (!currentApi) {
+        return;
+      }
+
+      if (
+        !shouldInterceptTouch({
+          penOnlyTouchNeverDraws: settingsRef.current.penOnlyTouchNeverDraws,
+          pointerType: event.pointerType,
+          isPrimary: event.isPrimary,
+          activeToolType: currentApi.getAppState().activeTool?.type,
+        })
+      ) {
+        return;
+      }
+
+      event.stopPropagation();
+      event.preventDefault();
+    };
+
+    shell.addEventListener("pointerdown", onPointerDown, { capture: true });
+    return () => {
+      shell.removeEventListener("pointerdown", onPointerDown, {
+        capture: true,
+      });
+    };
+  }, []);
 
   useWebBarrelFallback(
     bootstrapped && (!isNativePlatform || !settings.preferNativeStylusBridge),
@@ -2595,7 +2653,7 @@ function App() {
   }
 
   return (
-    <div className="draw-app-shell">
+    <div ref={shellRef} className="draw-app-shell">
       <input
         ref={fileInputRef}
         className="draw-hidden-input"
@@ -2786,6 +2844,7 @@ function App() {
           toggleZenMode={toggleZenMode}
           updatePenMode={updatePenMode}
           updatePenHoverRingPreference={updatePenHoverRingPreference}
+          updatePenOnlyTouchNeverDraws={updatePenOnlyTouchNeverDraws}
           updateStylusButtonAction={updateStylusButtonAction}
           updateStylusBridgePreference={updateStylusBridgePreference}
           viewModeEnabled={viewModeEnabled}

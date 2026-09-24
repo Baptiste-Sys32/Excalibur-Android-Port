@@ -70,6 +70,7 @@ export type DrawSettings = {
   forcePenMode: boolean;
   showPenHoverRing: boolean;
   stylusButtonAction: StylusButtonAction;
+  penOnlyTouchNeverDraws: boolean;
 };
 
 export type SceneSnapshotMeta = {
@@ -156,6 +157,7 @@ export const DEFAULT_SETTINGS: DrawSettings = {
   forcePenMode: false,
   showPenHoverRing: true,
   stylusButtonAction: "eraser",
+  penOnlyTouchNeverDraws: false,
 };
 
 const VALID_STYLUS_BUTTON_ACTIONS: ReadonlySet<string> = new Set([

@@ -46,6 +46,7 @@ type DrawMainMenuProps = {
   toggleSnapMode: () => void;
   updatePenMode: (nextPenMode: boolean) => Promise<void>;
   updatePenHoverRingPreference: (enabled: boolean) => Promise<void>;
+  updatePenOnlyTouchNeverDraws: (enabled: boolean) => Promise<void>;
   updateStylusButtonAction: (action: StylusButtonAction) => Promise<void>;
   updateStylusBridgePreference: (enabled: boolean) => Promise<void>;
 };
@@ -256,9 +257,25 @@ export function DrawMainMenu(props: DrawMainMenuProps) {
               }}
             >
               <span className="draw-menu-button-label">
-                {props.penMode ? "Pen draws, touch is off" : "Pen draws, touch draws"}
+                {props.penMode ? "Pen mode: touch selects only" : "Pen + touch draw"}
               </span>
               <span className="draw-menu-badge">{onOffLabel(props.penMode)}</span>
+            </button>
+          </MainMenu.ItemCustom>
+          <MainMenu.ItemCustom>
+            <button
+              className={menuButtonClassName}
+              type="button"
+              onClick={() => {
+                void props.updatePenOnlyTouchNeverDraws(
+                  !props.settings.penOnlyTouchNeverDraws,
+                );
+              }}
+            >
+              <span className="draw-menu-button-label">Pen-only: touch never draws</span>
+              <span className="draw-menu-badge">
+                {onOffLabel(props.settings.penOnlyTouchNeverDraws)}
+              </span>
             </button>
           </MainMenu.ItemCustom>
           <MainMenu.ItemCustom>
