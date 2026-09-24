@@ -18,6 +18,7 @@ import {
 
 import { BackupCenterModal } from "./components/BackupCenterModal";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
+import { DialogSheet, type SheetRequest } from "./components/DialogSheet";
 import { DrawMainMenu } from "./components/DrawMainMenu";
 import { ExportCenterModal } from "./components/ExportCenterModal";
 import { ImportAssistantModal } from "./components/ImportAssistantModal";
@@ -468,6 +469,16 @@ function App() {
   const [importAssistantBusy, setImportAssistantBusy] = useState(false);
   const [exportCenterOpen, setExportCenterOpen] = useState(false);
   const [exportCenterBusy, setExportCenterBusy] = useState(false);
+  const [sheetState, setSheetState] = useState<{
+    request: SheetRequest;
+    resolve: (value: string | boolean | null) => void;
+    invoker: HTMLElement | null;
+  } | null>(null);
+  const sheetStateRef = useRef<{
+    request: SheetRequest;
+    resolve: (value: string | boolean | null) => void;
+    invoker: HTMLElement | null;
+  } | null>(null);
   const [activeTimelineScene, setActiveTimelineScene] =
     useState<SavedSceneFile | null>(null);
   const [canvasVersions, setCanvasVersions] = useState<CanvasVersionMeta[]>([]);
@@ -552,6 +563,64 @@ function App() {
       showToast(message);
     },
     [showToast],
+  );
+
+  const openSheet = useCallback(
+    (
+      request: SheetRequest,
+      resolve: (value: string | boolean | null) => void,
+    ) => {
+      const active = document.activeElement;
+      const state = {
+        request,
+        resolve,
+        invoker: active instanceof HTMLElement ? active : null,
+      };
+      sheetStateRef.current = state;
+      setSheetState(state);
+    },
+    [],
+  );
+
+  const resolveSheet = useCallback((value: string | boolean | null) => {
+    const current = sheetStateRef.current;
+    sheetStateRef.current = null;
+    setSheetState(null);
+    if (current) {
+      current.resolve(value);
+      current.invoker?.focus?.();
+    }
+  }, []);
+
+  const showPrompt = useCallback(
+    (options: {
+      title: string;
+      message?: string;
+      initialValue: string;
+      placeholder?: string;
+      confirmLabel: string;
+    }) =>
+      new Promise<string | null>((resolve) => {
+        openSheet({ kind: "prompt", ...options }, (value) =>
+          resolve(typeof value === "string" ? value : null),
+        );
+      }),
+    [openSheet],
+  );
+
+  const showConfirm = useCallback(
+    (options: {
+      title: string;
+      message: string;
+      confirmLabel: string;
+      danger?: boolean;
+    }) =>
+      new Promise<boolean>((resolve) => {
+        openSheet({ kind: "confirm", ...options }, (value) =>
+          resolve(value === true),
+        );
+      }),
+    [openSheet],
   );
 
   const runPersistCurrentScene = useCallback(
@@ -1707,10 +1776,11 @@ function App() {
         makeSceneTitle(payload.appState.name),
         ".excalidraw",
       );
-      const requestedFilename =
-        typeof window.prompt === "function"
-          ? window.prompt("Save to device as:", defaultFilename)
-          : defaultFilename;
+      const requestedFilename = await showPrompt({
+        title: "Save scene copy",
+        initialValue: defaultFilename,
+        confirmLabel: "Save",
+      });
 
       if (requestedFilename === null) {
         showToast("Save canceled");
@@ -1746,7 +1816,7 @@ function App() {
         error instanceof Error && error.message ? ` (${error.message})` : "";
       showToast(`Could not save this scene${reason}`);
     }
-  }, [canvasDirectoryOpen, hydrateSavedSceneThumbnails, showToast]);
+  }, [canvasDirectoryOpen, hydrateSavedSceneThumbnails, showPrompt, showToast]);
 
   const shareSceneCopy = useCallback(async () => {
     const currentApi = apiRef.current;
@@ -2012,10 +2082,12 @@ function App() {
 
     const payload = createScenePayload(currentApi);
     const defaultName = makeSceneTitle(payload.appState.name);
-    const requestedName =
-      typeof window.prompt === "function"
-        ? window.prompt("Template name:", defaultName)
-        : defaultName;
+    const requestedName = await showPrompt({
+      title: "Save current as template",
+      message: "Name",
+      initialValue: defaultName,
+      confirmLabel: "Continue",
+    });
 
     if (requestedName === null) {
       showToast("Template save canceled");
@@ -2023,10 +2095,12 @@ function App() {
     }
 
     const name = requestedName.trim() || defaultName;
-    const requestedDescription =
-      typeof window.prompt === "function"
-        ? window.prompt("Template description:", "Custom canvas template")
-        : "Custom canvas template";
+    const requestedDescription = await showPrompt({
+      title: "Save current as template",
+      message: "Description",
+      initialValue: "Custom canvas template",
+      confirmLabel: "Save",
+    });
 
     if (requestedDescription === null) {
       showToast("Template save canceled");
@@ -2044,11 +2118,15 @@ function App() {
     } catch {
       showToast("Could not save template");
     }
-  }, [refreshCustomTemplates, showToast]);
+  }, [refreshCustomTemplates, showPrompt, showToast]);
 
   const renameTemplate = useCallback(
     async (template: CustomCanvasTemplate) => {
-      const requestedName = window.prompt("Rename template:", template.name);
+      const requestedName = await showPrompt({
+        title: "Rename template",
+        initialValue: template.name,
+        confirmLabel: "Rename",
+      });
       if (requestedName === null) {
         return;
       }
@@ -2061,12 +2139,18 @@ function App() {
         showToast(`Could not rename ${template.name}`);
       }
     },
-    [refreshCustomTemplates, showToast],
+    [refreshCustomTemplates, showPrompt, showToast],
   );
 
   const deleteTemplate = useCallback(
     async (template: CustomCanvasTemplate) => {
-      if (!window.confirm(`Delete ${template.name}?`)) {
+      const confirmed = await showConfirm({
+        title: `Delete ${template.name}?`,
+        message: "This custom template will be permanently removed.",
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!confirmed) {
         return;
       }
 
@@ -2078,7 +2162,7 @@ function App() {
         showToast(`Could not delete ${template.name}`);
       }
     },
-    [refreshCustomTemplates, showToast],
+    [refreshCustomTemplates, showConfirm, showToast],
   );
 
   const applyTemplate = useCallback(
@@ -2128,7 +2212,11 @@ function App() {
 
   const renameCanvas = useCallback(
     async (savedScene: SavedSceneFile) => {
-      const requestedName = window.prompt("Rename canvas:", savedScene.name);
+      const requestedName = await showPrompt({
+        title: "Rename canvas",
+        initialValue: savedScene.name,
+        confirmLabel: "Rename",
+      });
       if (requestedName === null) {
         return;
       }
@@ -2149,7 +2237,7 @@ function App() {
         showToast(`Could not rename canvas${reason}`);
       }
     },
-    [refreshSavedScenes, showToast],
+    [refreshSavedScenes, showPrompt, showToast],
   );
 
   const duplicateCanvas = useCallback(
@@ -2189,7 +2277,13 @@ function App() {
 
   const deleteCanvas = useCallback(
     async (savedScene: SavedSceneFile) => {
-      if (!window.confirm(`Delete ${savedScene.name}?`)) {
+      const confirmed = await showConfirm({
+        title: `Delete ${savedScene.name}?`,
+        message: "All copies of this canvas will be permanently removed.",
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!confirmed) {
         return;
       }
 
@@ -2218,7 +2312,7 @@ function App() {
         showToast(`Could not delete ${savedScene.name}${reason}`);
       }
     },
-    [refreshSavedScenes, showToast],
+    [refreshSavedScenes, showConfirm, showToast],
   );
 
   const openCanvasTimeline = useCallback(
@@ -2240,7 +2334,13 @@ function App() {
 
   const restoreCanvasFromTimeline = useCallback(
     async (savedScene: SavedSceneFile, version: CanvasVersionMeta) => {
-      if (!window.confirm(`Restore ${savedScene.name} from this version?`)) {
+      const confirmed = await showConfirm({
+        title: `Restore ${savedScene.name} from this version?`,
+        message: "The current canvas will be replaced by the selected version.",
+        confirmLabel: "Restore",
+        danger: true,
+      });
+      if (!confirmed) {
         return;
       }
 
@@ -2258,7 +2358,7 @@ function App() {
         showToast(`Could not restore ${savedScene.name}`);
       }
     },
-    [applySceneData, openCanvasTimeline, refreshSavedScenes, showToast],
+    [applySceneData, openCanvasTimeline, refreshSavedScenes, showConfirm, showToast],
   );
 
   const exportBackup = useCallback(async () => {
@@ -2438,6 +2538,10 @@ function App() {
             void exportSelectedFormats(formats);
           }}
         />
+      ) : null}
+
+      {sheetState ? (
+        <DialogSheet request={sheetState.request} onResolve={resolveSheet} />
       ) : null}
 
       <PageTemplateOverlay pageSettings={pageSettings} viewport={pageViewport} />

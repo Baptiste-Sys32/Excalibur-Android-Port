@@ -836,6 +836,22 @@ html[data-app-theme="dark"] .draw-stylus-hover-dot {
   }
 }
 
+.draw-directory-modal--sheet {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.draw-directory-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  border-radius: var(--border-radius-md, 8px);
+  border: 1px solid var(--menu-border, rgba(75, 94, 129, 0.2));
+  background: var(--island-bg-color, #fff);
+  color: var(--color-on-surface, inherit);
+  padding: 0 0.75rem;
+  font-size: 1rem;
+}
+
 .draw-pen-pill {
   position: absolute;
   left: 50%;
