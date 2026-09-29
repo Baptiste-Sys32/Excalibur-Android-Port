@@ -1895,6 +1895,18 @@ function App() {
     fileInputRef.current?.click();
   }, []);
 
+  const openBackupCenter = useCallback(() => {
+    setBackupCenterOpen(true);
+  }, []);
+
+  const openExportCenter = useCallback(() => {
+    setExportCenterOpen(true);
+  }, []);
+
+  const openPageSettings = useCallback(() => {
+    setPageSettingsOpen(true);
+  }, []);
+
   const openDirectory = useCallback(async () => {
     if (!isNativePlatform) {
       openFiles();
@@ -2469,6 +2481,10 @@ function App() {
     }
   }, [refreshCustomTemplates]);
 
+  const openTemplates = useCallback(() => {
+    void openTemplatePicker();
+  }, [openTemplatePicker]);
+
   const renameTemplate = useCallback(
     async (template: CustomCanvasTemplate) => {
       const requestedName = await showPrompt({
@@ -2932,17 +2948,18 @@ function App() {
           exportSvg={exportSvg}
           gridModeEnabled={gridModeEnabled}
           lastAutosavedAt={lastAutosavedAt}
-          nativeStylus={nativeStylus}
+          nativeStylusButtonState={
+            nativeStylus ? String(nativeStylus.buttonState) : null
+          }
+          nativeStylusToolType={nativeStylus?.toolType ?? null}
           objectsSnapModeEnabled={objectsSnapModeEnabled}
-          openBackupCenter={() => setBackupCenterOpen(true)}
+          openBackupCenter={openBackupCenter}
           openCanvas={openCanvas}
-          openExportCenter={() => setExportCenterOpen(true)}
+          openExportCenter={openExportCenter}
           openFiles={openFiles}
           openDirectory={openDirectory}
-          openPageSettings={() => setPageSettingsOpen(true)}
-          openTemplates={() => {
-            void openTemplatePicker();
-          }}
+          openPageSettings={openPageSettings}
+          openTemplates={openTemplates}
           pageSettings={pageSettings}
           penDetected={penDetected}
           penMode={penMode}

@@ -1,7 +1,8 @@
+import { memo } from "react";
+
 import { MainMenu } from "@excalidraw/excalidraw";
 import type { Theme } from "@excalidraw/excalidraw/element/types";
 
-import type { NativeStylusSnapshot } from "../lib/androidBridge";
 import {
   getPageCanvasModeOption,
   getPageTemplateOption,
@@ -38,7 +39,8 @@ type DrawMainMenuProps = {
   autosaveStatus: string;
   autosaveMessage?: string;
   recentsCount: number;
-  nativeStylus: NativeStylusSnapshot | null;
+  nativeStylusToolType: string | null;
+  nativeStylusButtonState: string | null;
   toggleTheme: () => void;
   toggleZenMode: () => void;
   toggleViewMode: () => void;
@@ -89,7 +91,9 @@ const formatTimestamp = (value: string | null) => {
   }).format(new Date(value));
 };
 
-export function DrawMainMenu(props: DrawMainMenuProps) {
+export const DrawMainMenu = memo(function DrawMainMenu(
+  props: DrawMainMenuProps,
+) {
   const menuButtonClassName = "draw-menu-button dropdown-menu-item dropdown-menu-item-base";
 
   return (
@@ -352,11 +356,11 @@ export function DrawMainMenu(props: DrawMainMenuProps) {
           </div>
           <div>
             <span>Native tool</span>
-            <strong>{props.nativeStylus?.toolType ?? "Unavailable"}</strong>
+            <strong>{props.nativeStylusToolType ?? "Unavailable"}</strong>
           </div>
           <div>
             <span>Pen buttons</span>
-            <strong>{props.nativeStylus ? String(props.nativeStylus.buttonState) : "—"}</strong>
+            <strong>{props.nativeStylusButtonState ?? "—"}</strong>
           </div>
         </div>
       </MainMenu.ItemCustom>
@@ -366,4 +370,4 @@ export function DrawMainMenu(props: DrawMainMenuProps) {
       <MainMenu.DefaultItems.Help />
     </MainMenu>
   );
-}
+});
