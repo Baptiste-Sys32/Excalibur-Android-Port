@@ -428,6 +428,23 @@ const formatExportTimestamp = (date: Date) => {
 const formatAutosaveStatus = (status: AutosaveStatus) =>
   status[0].toUpperCase() + status.slice(1);
 
+// Only these stylus fields are actually rendered: the pen menu shows toolType
+// and buttonState, and the hover ring picks its glyph from toolType/hovering.
+// Pressure and tilt change on nearly every native sample but are not read from
+// state (the ring measures pressure from web pointer events), so they must not
+// re-render the app.
+const sameStylusDisplayState = (
+  previous: NativeStylusSnapshot | null,
+  next: NativeStylusSnapshot | null,
+) =>
+  previous === next ||
+  (previous !== null &&
+    next !== null &&
+    previous.toolType === next.toolType &&
+    previous.pointerType === next.pointerType &&
+    previous.buttonState === next.buttonState &&
+    previous.hovering === next.hovering);
+
 function App() {
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(
@@ -450,6 +467,7 @@ function App() {
   const [nativeStylus, setNativeStylus] = useState<NativeStylusSnapshot | null>(
     null,
   );
+  const pushedNativeStylusRef = useRef<NativeStylusSnapshot | null>(null);
   const [zenModeEnabled, setZenModeEnabled] = useState(false);
   const [viewModeEnabled, setViewModeEnabled] = useState(false);
   const [gridModeEnabled, setGridModeEnabled] = useState(false);
@@ -1159,7 +1177,13 @@ function App() {
   }, [drainPendingOpenQueue, handleQueuedPendingOpens]);
 
   const applyStylusSnapshot = useCallback((snapshot: NativeStylusSnapshot | null) => {
-    setNativeStylus(snapshot);
+    // The barrel/eraser state machine below reads `snapshot` directly, so
+    // gating this state write cannot affect stylus behaviour. Only re-render
+    // when a field the UI displays actually changes.
+    if (!sameStylusDisplayState(pushedNativeStylusRef.current, snapshot)) {
+      pushedNativeStylusRef.current = snapshot;
+      setNativeStylus(snapshot);
+    }
 
     const currentApi = apiRef.current;
     if (!snapshot || !currentApi || !settingsRef.current.preferNativeStylusBridge) {
