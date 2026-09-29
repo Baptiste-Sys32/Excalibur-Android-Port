@@ -1583,13 +1583,23 @@ function App() {
         files,
       };
 
-      const hasMeaningfulScene =
-        elements.some((element) => !element.isDeleted) ||
-        Object.keys(files).length > 0 ||
-        Boolean(appState.name?.trim());
+      // Ordering matters: this block must stay upstream of the early return
+      // below. openSavedCanvas sets the ref false *after* installing a
+      // non-empty scene, so the next change has to re-arm it from this scan.
+      // Hoisting the return above the scan would latch autosave off for the
+      // rest of the session.
+      //
+      // Once the ref is already true this block can never set it false, so
+      // scanning the element array is pure overhead on every later commit.
+      if (!hasMeaningfulChangeRef.current) {
+        const hasMeaningfulScene =
+          elements.some((element) => !element.isDeleted) ||
+          Object.keys(files).length > 0 ||
+          Boolean(appState.name?.trim());
 
-      if (hasMeaningfulScene) {
-        hasMeaningfulChangeRef.current = true;
+        if (hasMeaningfulScene) {
+          hasMeaningfulChangeRef.current = true;
+        }
       }
 
       if (!hasMeaningfulChangeRef.current) {
