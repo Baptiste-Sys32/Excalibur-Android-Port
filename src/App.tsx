@@ -468,6 +468,7 @@ function App() {
     null,
   );
   const pushedNativeStylusRef = useRef<NativeStylusSnapshot | null>(null);
+  const latestNativeStylusRef = useRef<NativeStylusSnapshot | null>(null);
   const [zenModeEnabled, setZenModeEnabled] = useState(false);
   const [viewModeEnabled, setViewModeEnabled] = useState(false);
   const [gridModeEnabled, setGridModeEnabled] = useState(false);
@@ -1176,10 +1177,16 @@ function App() {
     }
   }, [drainPendingOpenQueue, handleQueuedPendingOpens]);
 
+  const getLatestNativeStylus = useCallback(
+    () => latestNativeStylusRef.current,
+    [],
+  );
+
   const applyStylusSnapshot = useCallback((snapshot: NativeStylusSnapshot | null) => {
     // The barrel/eraser state machine below reads `snapshot` directly, so
     // gating this state write cannot affect stylus behaviour. Only re-render
-    // when a field the UI displays actually changes.
+    // when a field the UI actually displays changes.
+    latestNativeStylusRef.current = snapshot;
     if (!sameStylusDisplayState(pushedNativeStylusRef.current, snapshot)) {
       pushedNativeStylusRef.current = snapshot;
       setNativeStylus(snapshot);
@@ -2930,7 +2937,10 @@ function App() {
       ) : null}
 
       <PageTemplateOverlay pageSettings={pageSettings} viewport={pageViewport} />
-      <StylusHoverOverlay stylus={nativeStylus} enabled={settings.showPenHoverRing} />
+      <StylusHoverOverlay
+        enabled={settings.showPenHoverRing}
+        getSample={getLatestNativeStylus}
+      />
 
       <Excalidraw
         initialData={initialData}

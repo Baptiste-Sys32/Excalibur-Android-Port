@@ -27,6 +27,8 @@ export type NativeStylusSnapshot = {
   // (side) button. NOTE: web PointerEvent button codes differ (32 = eraser
   // there) — never share one constant across the two domains.
   buttonState: number;
+  // Wall clock (Date.now() time base) so the web layer can age a sample.
+  // Not MotionEvent.getEventTime(), which is uptime-based.
   timestamp: number;
 };
 

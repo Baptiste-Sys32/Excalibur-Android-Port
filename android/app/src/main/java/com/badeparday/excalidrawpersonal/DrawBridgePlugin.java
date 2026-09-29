@@ -326,6 +326,12 @@ public class DrawBridgePlugin extends Plugin {
             return;
         }
 
+        // Throttle on the monotonic event clock rather than the wall clock in
+        // the payload: System.currentTimeMillis() can step backwards, which
+        // would make the interval negative and stall the throttle until the
+        // clock caught up.
+        long eventTime = event.getEventTime();
+
         synchronized (LOCK) {
             if (isSimilarSnapshot(snapshot, latestStylusSnapshot)) {
                 return;
@@ -334,12 +340,12 @@ public class DrawBridgePlugin extends Plugin {
             if (
                 latestStylusSnapshot != null &&
                 isSameDiscreteStylusState(snapshot, latestStylusSnapshot) &&
-                snapshot.optLong("timestamp") - lastStylusEmitTime < STYLUS_MIN_INTERVAL_MS
+                eventTime - lastStylusEmitTime < STYLUS_MIN_INTERVAL_MS
             ) {
                 return;
             }
 
-            lastStylusEmitTime = snapshot.optLong("timestamp");
+            lastStylusEmitTime = eventTime;
             latestStylusSnapshot = snapshot;
 
             if (instance != null) {
@@ -495,7 +501,10 @@ public class DrawBridgePlugin extends Plugin {
         snapshot.put("orientation", round((float) orientation));
         snapshot.put("tilt", round((float) tilt));
         snapshot.put("buttonState", event.getButtonState());
-        snapshot.put("timestamp", event.getEventTime());
+        // Wall clock, because the web layer compares this against Date.now().
+        // MotionEvent.getEventTime() is in the SystemClock.uptimeMillis() time
+        // base, which is monotonic but shares no origin with the browser clock.
+        snapshot.put("timestamp", System.currentTimeMillis());
         return snapshot;
     }
 

@@ -3,7 +3,10 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { NativeStylusSnapshot } from "../lib/androidBridge";
 
 type StylusHoverOverlayProps = {
-  stylus: NativeStylusSnapshot | null;
+  // Read inside the existing rAF flush rather than held as state: native
+  // stylus samples arrive far faster than React needs to re-render, and the
+  // live pressure value must not be quantised to discrete field changes.
+  getSample: () => NativeStylusSnapshot | null;
   enabled: boolean;
 };
 
@@ -17,13 +20,13 @@ type HoverSample = {
 
 const HIDE_AFTER_MS = 500;
 
-function StylusHoverOverlay({ stylus, enabled }: StylusHoverOverlayProps) {
+function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sampleRef = useRef<HoverSample | null>(null);
   const rafRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
-  const stylusRef = useRef(stylus);
-  stylusRef.current = stylus;
+  const getSampleRef = useRef(getSample);
+  getSampleRef.current = getSample;
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -44,7 +47,7 @@ function StylusHoverOverlay({ stylus, enabled }: StylusHoverOverlayProps) {
           return;
         }
 
-        const snapshot = stylusRef.current;
+        const snapshot = getSampleRef.current();
         const pressure =
           snapshot &&
           snapshot.pointerType === "pen" &&
@@ -70,7 +73,7 @@ function StylusHoverOverlay({ stylus, enabled }: StylusHoverOverlayProps) {
         window.clearTimeout(hideTimerRef.current);
       }
       hideTimerRef.current = window.setTimeout(() => {
-        const snapshot = stylusRef.current;
+        const snapshot = getSampleRef.current();
         if (!snapshot?.hovering) {
           hide();
         }
