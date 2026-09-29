@@ -1542,13 +1542,19 @@ function App() {
         return;
       }
 
-      // Quantize so sub-pixel scroll noise doesn't rebuild the overlay.
+      // Quantize so sub-pixel scroll noise doesn't rebuild the overlay. The
+      // overlay maps scene to screen as (scene + scroll) * zoom, so rounding
+      // the scene-space scroll leaves up to 0.5 scene units of error, which is
+      // 15px of visible desync at 30x zoom and makes the guides advance in
+      // 30px jumps while panning. Snap the screen-space offset instead and
+      // convert back, which keeps the guides glued within a pixel at any zoom.
+      const zoom = Math.round((appState.zoom?.value || 1) * 1000) / 1000;
       const nextViewport: PageViewport = {
-        scrollX: Math.round(appState.scrollX),
-        scrollY: Math.round(appState.scrollY),
+        scrollX: Math.round(appState.scrollX * zoom) / zoom,
+        scrollY: Math.round(appState.scrollY * zoom) / zoom,
         width: Math.round(appState.width),
         height: Math.round(appState.height),
-        zoom: Math.round((appState.zoom?.value || 1) * 1000) / 1000,
+        zoom,
       };
       pageViewportPendingRef.current = nextViewport;
 
