@@ -1771,7 +1771,11 @@ function App() {
     let cleanup: () => void = () => {};
 
     void register().then((teardown) => {
-      cleanup = teardown;
+      if (disposed) {
+        teardown();
+      } else {
+        cleanup = teardown;
+      }
     });
 
     return () => {

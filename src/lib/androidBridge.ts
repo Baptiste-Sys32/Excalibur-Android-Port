@@ -25,7 +25,7 @@ export type NativeStylusSnapshot = {
   tilt?: number;
   // Android MotionEvent button-state bitmask. Bit 32 is the S Pen barrel
   // (side) button. NOTE: web PointerEvent button codes differ (32 = eraser
-  // there) — never share one constant across the two domains.
+  // there), never share one constant across the two domains.
   buttonState: number;
   // Wall clock (Date.now() time base) so the web layer can age a sample.
   // Not MotionEvent.getEventTime(), which is uptime-based.
