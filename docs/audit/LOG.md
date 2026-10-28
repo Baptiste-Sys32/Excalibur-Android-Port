@@ -77,3 +77,27 @@
 - Airplane-mode persisted rectangle survived force stop/relaunch. Simple local
   PNG/SVG/PDF exports succeeded: 1098 / 1264 / 28153 bytes respectively. These are
   existence/size smoke checks, not comprehensive visual export acceptance.
+
+## Clean checkout blocker
+
+- Detached checkout at bed46dfa: npm ci passed (879 packages). Full debug failed
+  in Vite because @excalidraw/excalidraw/index.css resolves to ignored vendor dist.
+- Package review also found @excalidraw/element runtime exports point to ignored
+  dist, unlike common/math source exports. This requires wrapper Vite aliases to
+  tracked CSS and pinned element source. No vendor edits or dependency upgrade.
+- npm ci reports 36 dependency advisories (2 low, 13 moderate, 20 high, 1 critical).
+  This is npm's aggregate report, not a verified exploitability assessment or an
+  app-only count. VENDOR.md already records one version-based false positive.
+  No automatic audit-fix or unreviewed dependency/engine update was performed.
+
+## Build source resolution
+
+- Added Vite aliases for the tracked prebuilt CSS and pinned element source.
+  No vendor file changed. Main-checkout tsc/lint/build/Java/diff checks pass.
+- The detached checkout with this wrapper config completes full debug assembly
+  from npm ci without vendor runtime dist. A final committed-state rerun follows.
+- Core bundle is now 5425.08 kB (gzip 1856.42 kB), versus baseline 5469.71 kB
+  (gzip 1868.03 kB). This reflects source resolution, not a claimed speed gain.
+- Rebuilt APK launches in airplane mode with local Assistant/Excalifont. Synthetic
+  pen pointer at (100,120) produces exactly translate3d(100px,120px,0); ring is
+  visible after rAF and hidden after 600 ms observation. No physical latency claim.
