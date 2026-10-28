@@ -34,3 +34,19 @@
   event-loop scheduling. This is a code bound, not a measured hardware delay.
 - Final tsc, lint, build (Vite 33.00 s), Java compile (5 s), diff check passed.
   Freshness and ZIP pure smoke tests passed; expanded test suite follows.
+
+## Native intake hardening
+
+- Separate batch envelope from file objects to remove the recursive JSON graph.
+- Limit attempted files to 32, accepted batch bytes to 64 MiB, and queued raw bytes
+  to 64 MiB in addition to ten slots. This excludes transient/base64/JSON copies;
+  it is not a total heap ceiling. Overflow still discards oldest queued batches.
+- Do not retain duplicate intent events when no listener exists; the queue is
+  the durable process-local source. Guard malformed parcels/provider failures.
+- Sanitize path segments, control characters, dot names and long display names.
+- Replace template addition/package-name tests with JVM transport policy tests
+  and a real Android two-file payload serialization regression test.
+- Native intake validation passed: tsc, lint, web build, Java compile, two JVM
+  policy tests and one Android instrumented serialization test on API 36 AVD.
+  A simultaneous manual instrumentation attempt raced Gradle's test lifecycle
+  and found no installed runner; the Gradle connected test completed successfully.
