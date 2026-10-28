@@ -50,3 +50,17 @@
   policy tests and one Android instrumented serialization test on API 36 AVD.
   A simultaneous manual instrumentation attempt raced Gradle's test lifecycle
   and found no installed runner; the Gradle connected test completed successfully.
+
+## Offline wrapper policy
+
+- Added pre-script CSP for local/data/blob assets, blocking remote resource loads
+  and frames. Explicitly disabled AI/embeds via public props; hid online library
+  browse/publish/help links from src and blocked external navigation callbacks.
+- Built output still contains upstream host strings (18 distinct host strings in
+  JavaScript). Presence is not reachability; CSP is the resource boundary.
+- tsc, lint, build, Java compile, diff check and full debug build passed.
+- API 36 emulator: airplane mode=1, Wi-Fi disabled, cold launch completes with two
+  canvas nodes; Assistant and Excalifont loaded, zero errored font faces at launch.
+  Local index fetch returned 200; external esm.sh fetch was rejected by CSP.
+  A rectangle drawn through adb touch was autosaved as one rectangle in private
+  storage. Physical S Pen timing and complete export matrix remain unverified.

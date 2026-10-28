@@ -1,3 +1,4 @@
+import { isLocalNavigation } from "./lib/offline";
 import { App as AppPlugin } from "@capacitor/app";
 import { Share } from "@capacitor/share";
 import { SplashScreen } from "@capacitor/splash-screen";
@@ -2951,6 +2952,14 @@ function App() {
         onExcalidrawAPI={setApi}
         onChange={handleChange}
         onLibraryChange={handleLibraryChange}
+        aiEnabled={false}
+        validateEmbeddable={false}
+        onLinkOpen={(element, event) => {
+          if (!isLocalNavigation(element.link ?? "", window.location.href)) {
+            event.preventDefault();
+            showToast("External links are unavailable offline");
+          }
+        }}
         autoFocus
         handleKeyboardGlobally
         UIOptions={{
