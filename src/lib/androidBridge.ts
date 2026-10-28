@@ -41,6 +41,7 @@ type StylusChangeEvent = {
 };
 
 interface DrawBridgePlugin {
+  setWritingWake(options: { enabled: boolean }): Promise<void>;
   getPendingOpen(): Promise<{ pendingOpen: PendingOpenPayload | null }>;
   clearPendingOpen(): Promise<void>;
   getStylusSnapshot(): Promise<{ stylus: NativeStylusSnapshot | null }>;
@@ -117,3 +118,5 @@ export const addStylusChangeListener = async (
     return NOOP_LISTENER;
   }
 };
+
+export const setWritingWake = (enabled: boolean) => DrawBridge.setWritingWake({ enabled });

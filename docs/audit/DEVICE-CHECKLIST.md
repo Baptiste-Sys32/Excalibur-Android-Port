@@ -43,3 +43,12 @@ no-INTERNET variant passed the same basic path, with the absent permission
 confirmed from the APK. Synthetic hover position and inactivity expiry passed.
 Two Android regression tests passed. These do not certify pen flip, barrel
 firmware, refresh-rate smoothness, provider behavior or large/image-rich exports.
+
+## Feature 3: keep awake while writing
+
+Commit subject: Add an opt-in screen timeout for active stylus writing.
+Enable in Pen & touch, write with pen and flipped eraser. Correct: the screen
+stays awake for 120 s after the last contact; hovering, mouse and finger do not
+extend it. Background, disable or rotate/recreate: no stale window flag; resume
+requires new contact. Verify against a short system screen timeout. The Activity
+flag is used without wake-lock permission or a global timeout change.

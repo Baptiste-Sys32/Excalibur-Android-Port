@@ -46,6 +46,7 @@ type DrawMainMenuProps = {
   toggleViewMode: () => void;
   toggleGridMode: () => void;
   toggleSnapMode: () => void;
+  updateWritingWake: (enabled: boolean) => Promise<void>;
   updatePenMode: (nextPenMode: boolean) => Promise<void>;
   updatePenHoverRingPreference: (enabled: boolean) => Promise<void>;
   updatePenOnlyTouchNeverDraws: (enabled: boolean) => Promise<void>;
@@ -252,6 +253,15 @@ export const DrawMainMenu = memo(function DrawMainMenu(
       <MainMenu.Sub>
         <MainMenu.Sub.Trigger>Pen &amp; touch</MainMenu.Sub.Trigger>
         <MainMenu.Sub.Content>
+          <MainMenu.ItemCustom>
+            <button className={menuButtonClassName} type="button" onClick={() => {
+              void props.updateWritingWake(!props.settings.keepAwakeWhileWriting);
+            }}>
+              <span className="draw-menu-button-label">Keep awake while writing</span>
+              <span className="draw-menu-badge">{onOffLabel(props.settings.keepAwakeWhileWriting)}</span>
+              <span className="draw-menu-button-meta">Pen contact, 2 min idle timeout</span>
+            </button>
+          </MainMenu.ItemCustom>
           <MainMenu.ItemCustom>
             <button
               className={menuButtonClassName}

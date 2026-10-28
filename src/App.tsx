@@ -1,3 +1,4 @@
+import { setWritingWake } from "./lib/androidBridge";
 import { isLocalNavigation } from "./lib/offline";
 import { App as AppPlugin } from "@capacitor/app";
 import { Share } from "@capacitor/share";
@@ -1342,6 +1343,25 @@ function App() {
     settingsRef.current = nextSettings;
     await persistSettings(nextSettings);
   }, []);
+
+  useEffect(() => {
+    if (bootstrapped && isNativePlatform) {
+      void setWritingWake(settings.keepAwakeWhileWriting).catch(() => {
+        showToast("Could not update writing screen timeout");
+      });
+    }
+  }, [bootstrapped, settings.keepAwakeWhileWriting, showToast]);
+
+  const updateWritingWake = useCallback(async (enabled: boolean) => {
+    const next = { ...settingsRef.current, keepAwakeWhileWriting: enabled };
+    try {
+      await persistSettings(next);
+      settingsRef.current = next;
+      setSettings(next);
+    } catch {
+      showToast("Could not save writing screen timeout");
+    }
+  }, [showToast]);
 
   const updatePenHoverRingPreference = useCallback(async (enabled: boolean) => {
     const nextSettings = {
@@ -3014,6 +3034,7 @@ function App() {
           toggleTheme={toggleTheme}
           toggleViewMode={toggleViewMode}
           toggleZenMode={toggleZenMode}
+          updateWritingWake={updateWritingWake}
           updatePenMode={updatePenMode}
           updatePenHoverRingPreference={updatePenHoverRingPreference}
           updatePenOnlyTouchNeverDraws={updatePenOnlyTouchNeverDraws}

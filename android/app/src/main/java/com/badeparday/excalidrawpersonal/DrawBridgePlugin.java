@@ -70,6 +70,17 @@ public class DrawBridgePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setWritingWake(PluginCall call) {
+        boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+        getActivity().runOnUiThread(() -> {
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).setWritingWakeEnabled(enabled);
+                call.resolve();
+            } else call.reject("Writing wake is unavailable");
+        });
+    }
+
+    @PluginMethod
     public void getPendingOpen(PluginCall call) {
         JSObject result = new JSObject();
         synchronized (LOCK) {

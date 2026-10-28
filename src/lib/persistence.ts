@@ -66,6 +66,7 @@ export type SavedSceneLocation = "external" | "documents" | "data";
 export type StylusButtonAction = "eraser" | "laser" | "selection" | "hand" | "none";
 
 export type DrawSettings = {
+  keepAwakeWhileWriting: boolean;
   preferNativeStylusBridge: boolean;
   forcePenMode: boolean;
   showPenHoverRing: boolean;
@@ -154,6 +155,7 @@ export type DeleteSavedSceneSummary = {
 };
 
 export const DEFAULT_SETTINGS: DrawSettings = {
+  keepAwakeWhileWriting: false,
   preferNativeStylusBridge: true,
   forcePenMode: false,
   showPenHoverRing: true,
@@ -779,6 +781,7 @@ export const readSettings = async () => {
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
+    keepAwakeWhileWriting: stored.keepAwakeWhileWriting === true,
     stylusButtonAction: VALID_STYLUS_BUTTON_ACTIONS.has(
       stored.stylusButtonAction ?? "",
     )

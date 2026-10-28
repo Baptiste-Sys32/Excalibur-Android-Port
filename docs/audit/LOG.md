@@ -177,3 +177,13 @@ was supplied per command because the requested bare Gradle invocation failed.
   Off precondition and was repeated explicitly; only the confirmed run is counted.
 - All remaining physical S Pen, provider, low-storage and complex-export checks
   are collected in DEVICE-CHECKLIST.md with originating commit references.
+
+## Feature 3: writing screen timeout
+
+- Added opt-in Keep awake while writing in Pen & touch, default Off.
+- Native stylus/eraser contact sets an Activity-only KEEP_SCREEN_ON flag; hover,
+  fingers and mouse do not extend it. Timeout is 120 s since the last contact.
+- One scheduled timeout checks the monotonic deadline; no task/window update is
+  enqueued for every point. Pause, destruction and disabling clear the flag.
+- Pure JVM policy test covers opt-in, last-contact extension, expiry and resume.
+  tsc, lint, web build, Java compile, JVM and existing pure tests pass.
