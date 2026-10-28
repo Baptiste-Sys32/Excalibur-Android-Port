@@ -46,4 +46,23 @@ public class ImportPayloadTest {
             for (File file : files) file.delete();
         }
     }
+
+    private JSObject sample(double pressure, double tiltX, int buttons, boolean hovering) {
+        return new JSObject().put("toolType", "stylus").put("pointerType", "pen")
+            .put("pressure", pressure).put("tiltX", tiltX).put("tiltY", 0.0)
+            .put("buttonState", buttons).put("hovering", hovering);
+    }
+
+    @Test public void similarityPreservesDiscreteChangesAndAccumulatesContinuousChanges() throws Exception {
+        Method similar = DrawBridgePlugin.class.getDeclaredMethod(
+            "isSimilarSnapshot", JSObject.class, JSObject.class);
+        similar.setAccessible(true);
+        JSObject previous = sample(0.5, 0, 0, true);
+        assertEquals(true, similar.invoke(null, sample(0.54, 2.9, 0, true), previous));
+        assertEquals(false, similar.invoke(null, sample(0.56, 0, 0, true), previous));
+        assertEquals(false, similar.invoke(null, sample(0.5, 3, 0, true), previous));
+        assertEquals(false, similar.invoke(null, sample(0.5, 0, 32, true), previous));
+        assertEquals(false, similar.invoke(null, sample(0.5, 0, 0, false), previous));
+        assertEquals(false, similar.invoke(null, previous, null));
+    }
 }

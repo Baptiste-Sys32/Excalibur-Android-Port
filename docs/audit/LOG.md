@@ -64,3 +64,16 @@
   Local index fetch returned 200; external esm.sh fetch was rejected by CSP.
   A rectangle drawn through adb touch was autosaved as one rectangle in private
   storage. Physical S Pen timing and complete export matrix remain unverified.
+
+## Regression suite
+
+- Added npm test (Node built-in runner, existing TypeScript transpiler) and CI step.
+- Seven pure tests pass, including 8000 guide-quantization inputs. Extracted the
+  existing quantization unchanged into pageSettings.ts so tests exercise the
+  actual helper. Old historical scene-rounding error at 30x reproduced as
+  14.9925 px versus current 0.4997 px; this session does not change that bound.
+- Two JVM tests and two Android instrumentation tests pass, including actual
+  snapshot similarity thresholds and discrete changes. Full verification passes.
+- Airplane-mode persisted rectangle survived force stop/relaunch. Simple local
+  PNG/SVG/PDF exports succeeded: 1098 / 1264 / 28153 bytes respectively. These are
+  existence/size smoke checks, not comprehensive visual export acceptance.

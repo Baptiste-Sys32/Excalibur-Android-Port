@@ -18,7 +18,8 @@
     "android:open": "npx cap open android",
     "android:build:debug": "npm run android:sync && cd android && ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}} JAVA_HOME=${JAVA_HOME:-/opt/android-studio/jbr} ./gradlew assembleDebug",
     "android:build:release": "npm run android:sync && cd android && ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}} JAVA_HOME=${JAVA_HOME:-/opt/android-studio/jbr} ./gradlew assembleRelease",
-    "postinstall": "npm run sync:excalidraw-assets"
+    "postinstall": "npm run sync:excalidraw-assets",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^5.0.8",
