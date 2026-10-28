@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.badeparday.excalidrawpersonal",
-  appName: "Escalidraw",
+  appName: "Excalibur",
   webDir: "dist",
   server: {
     androidScheme: "https",
