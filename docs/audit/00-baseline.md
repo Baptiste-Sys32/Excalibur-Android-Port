@@ -17,3 +17,9 @@ failed build. Android compilation result is recorded in LOG.md.
 The manifest retains INTERNET, allowBackup=false, and the existing app ID.
 No runtime dependency has been added. No S Pen measurements are possible yet.
 Static findings are not device measurements; see DEVICE-CHECKLIST.md.
+
+Final confirmation: main and the locally recorded origin/main have zero commits
+of divergence; 297 upstream remote-tracking refs exist locally. These are local
+ref observations, with no fetch. Corrected SDK-path Java compile passed. Clean
+checkout later exposed ignored runtime-dist dependencies despite the workstation
+baseline passing; see LOG.md and 02-stability.md for the fix and clean rerun.

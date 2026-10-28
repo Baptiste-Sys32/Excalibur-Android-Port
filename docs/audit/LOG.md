@@ -101,3 +101,79 @@
 - Rebuilt APK launches in airplane mode with local Assistant/Excalifont. Synthetic
   pen pointer at (100,120) produces exactly translate3d(100px,120px,0); ring is
   visible after rAF and hidden after 600 ms observation. No physical latency claim.
+
+## INTERNET comparison
+
+- Temporary detached-worktree variant removed only INTERNET. aapt confirms the
+  merged APK requests no INTERNET (only the generated receiver permission).
+- API 36, WebView 133.0.6943.137, airplane mode and Wi-Fi disabled: no-INTERNET
+  variant launches, exposes two canvas nodes, local fetch=200, DrawBridge call
+  succeeds, Assistant/Excalifont load, and a touch rectangle autosaves.
+- PNG/SVG/PDF outputs exist at 1088 / 1244 / 28119 bytes. PDF completed after
+  the initial 2 s observation window, so results were checked again afterward.
+- INTERNET is retained in production because local provider/share workflows,
+  complex font/image exports and other supported Android/WebView combinations
+  are not fully certified. Capacitor does not universally require the permission
+  for this tested local launch path. Removal is a viable follow-up with the
+  explicit physical-device acceptance checklist, not a proven universal failure.
+- Production-only npm audit reports 17 advisories (1 low, 11 moderate, 5 high,
+  zero critical). These are package reports, not verified runtime exploitability.
+
+## Final clean checkout and measurement summary
+
+- Committed source 3dae8672, detached worktree: npm ci, seven pure tests, full
+  npm run android:build:debug, tsc, lint, Java compile and two JVM tests pass.
+  git status is empty and diff --check passes. This is a clean source rebuild,
+  not a claim of byte-identical APK reproducibility. No vendored dist was copied
+  from the workstation. Full debug Gradle phase: 21 s on this rerun.
+- Temporary no-INTERNET edit is restored in the worktree. A wrong-root Gradle
+  invocation during that experiment returned 127, then the correct android/
+  wrapper path built successfully. Production manifest is unchanged throughout.
+- No-INTERNET rectangle also survives force stop/relaunch; two canvases render.
+  An early observation during startup returned zero canvases, then settled to two.
+- This session did not measure S Pen latency, event loss, hardware ring offset,
+  UI-thread trace cost, or peak heap. Device measurement procedures are explicit.
+
+| Quantity | Before | After | Evidence type |
+| --- | --- | --- | --- |
+| Hover inactivity bound with stale proximity | Potentially indefinite | 500 ms plus scheduling | Code; synthetic visible after rAF, hidden at 600 ms |
+| Future wall-clock sample accepted | Yes | No | Pure boundary test |
+| Native files attempted per batch | Unbounded | 32 | JVM/native code bounds |
+| Native batch / queued raw bytes | Unbounded | 64 MiB / 64 MiB | JVM/code bounds, excludes encoding/serialization copies |
+| Multi-file envelope cycle | Present | Absent | Android serialization regression |
+| Wrapper pure / meaningful JVM / Android tests | 0 / 0 / 0 | 7 / 2 / 2 | Passing runners |
+| Clean npm ci full debug | Fails at ignored CSS/runtime dist | Passes | Detached worktree rebuild |
+| Core JS / gzip | 5469.71 / 1868.03 kB | 5425.08 / 1856.42 kB | Vite output, no speed claim |
+| Guide scroll error at 30x | 0.5 px bound at baseline | Same 0.5 px bound | 8000-input regression, existing correction preserved |
+
+## Commit map
+
+- f4a54a01: baseline and scoped working rules.
+- 0ce41f29: hover and listener lifecycle.
+- 81db8768: bounded, nonrecursive native intake and transport tests.
+- 5ea143c5: local resource CSP and online UI containment.
+- bed46dfa: wrapper/native regression coverage and CI.
+- 3dae8672: clean-checkout runtime resolution.
+- Final audit documentation commit: storage inventory corrections, severity and
+  feature reports, measurement summary and device acceptance checklist.
+
+No engine source edits, runtime dependencies, feature additions, new remotes,
+fetches, pushes or release builds. No intentional rule exception. SDK discovery
+was supplied per command because the requested bare Gradle invocation failed.
+
+## Final main-checkout verification
+
+- Seven pure tests, tsc, lint, web build, Java compile, two JVM tests, diff check
+  and full debug build pass. Final web Vite phase: 21.94 s; full debug Gradle
+  phase: 3 s incremental. Timing depends on caches and concurrent load.
+- Restored normal production APK on the emulator; aapt confirms its unchanged
+  INTERNET permission. A CDP probe immediately after installation found the app
+  stopped; it was relaunched before continuing acceptance checks.
+- Audit docs contain no em/en dashes; vendor tracked diff remains empty and
+  tracked credential-marker scan remains zero. No remote mutation occurred.
+- Final disabled-at-start acceptance: persisted Off through the UI, cold launched
+  with no ring node, enabled through Pen & touch, then synthetic pen movement
+  created a visible ring at exactly (110,130). Initial setup did not satisfy the
+  Off precondition and was repeated explicitly; only the confirmed run is counted.
+- All remaining physical S Pen, provider, low-storage and complex-export checks
+  are collected in DEVICE-CHECKLIST.md with originating commit references.
