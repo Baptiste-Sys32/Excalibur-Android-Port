@@ -1,4 +1,6 @@
-import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
+import { Filesystem, currentWorkspace, publicStorageRoot, initializeWorkspace, writeWorkspaceFile } from "./workspace";
+import { parseWorkspacePath } from "./workspacePaths";
+import { Directory, Encoding } from "@capacitor/filesystem";
 import { Preferences } from "@capacitor/preferences";
 import {
   MIME_TYPES,
@@ -38,11 +40,11 @@ const APP_PATHS = {
 } as const;
 
 const USER_STORAGE_PATHS = {
-  root: "Excalidraw",
-  canvasesDir: "Excalidraw/canvases",
-  librariesDir: "Excalidraw/libraries",
-  exportsDir: "Excalidraw/exports",
-  backupsDir: "Excalidraw/backups",
+  get root() { return publicStorageRoot(); },
+  get canvasesDir() { return publicStorageRoot() + "/canvases"; },
+  get librariesDir() { return publicStorageRoot() + "/libraries"; },
+  get exportsDir() { return publicStorageRoot() + "/exports"; },
+  get backupsDir() { return publicStorageRoot() + "/backups"; },
 } as const;
 
 const PREFERENCE_KEYS = {
@@ -267,6 +269,11 @@ const writeBase64FileNative = async (
   directory: NativeStorageDirectory,
   base64Data: string,
 ) => {
+  if (parseWorkspacePath(path)) {
+    if (directory !== Directory.Documents) throw new Error("Workspace path used outside public storage");
+    await writeWorkspaceFile(path, base64Data);
+    return;
+  }
   const firstChunk = base64Data.slice(0, BASE64_WRITE_CHUNK_SIZE);
   await Filesystem.writeFile({
     path,
@@ -386,7 +393,7 @@ const copyLegacyExternalFilesToDocuments = async (directoryPath: string) => {
 };
 
 const migrateLegacyExternalUserStorage = async () => {
-  if (!isAndroid) {
+  if (!isAndroid || currentWorkspace().treeUri) {
     return;
   }
 
@@ -411,6 +418,8 @@ const ensureUserStorageDirectories = async (
   if (!isNativePlatform) {
     return;
   }
+
+  if (currentWorkspace().treeUri) return;
 
   const storagePaths = [
     USER_STORAGE_PATHS.root,
@@ -1025,7 +1034,8 @@ export const listSavedScenesFromDevice = async (): Promise<SavedSceneFile[]> => 
           scenesByName.set(file.name, nextEntry);
         }
       }
-    } catch {
+    } catch (error) {
+      if (currentWorkspace().treeUri) throw error;
       // Directory may be unavailable on this platform/profile.
     }
   }
@@ -1258,7 +1268,8 @@ const removeCanvasIndexEntriesForName = async (filename: string) =>
     const normalizedSuffix = `/${filename}`;
 
     for (const [key, entry] of Object.entries(index)) {
-      if (entry.name === filename || entry.path.endsWith(normalizedSuffix)) {
+      if (entry.path.startsWith(`${USER_STORAGE_PATHS.canvasesDir}/`) &&
+          (entry.name === filename || entry.path.endsWith(normalizedSuffix))) {
         delete index[key];
       }
     }
@@ -1567,7 +1578,7 @@ export const renameSavedScene = async (
   nextName: string,
 ) => {
   const filename = normalizeSceneFilename(nextName);
-  const targetPath = `${USER_STORAGE_PATHS.canvasesDir}/${filename}`;
+  const targetPath = `${savedScene.path.slice(0, savedScene.path.lastIndexOf("/"))}/${filename}`;
   const directory = toNativeStorageDirectory(savedScene.location);
 
   if (targetPath === savedScene.path) {
@@ -1697,6 +1708,12 @@ const deleteSceneCopiesByName = async (
 export const deleteSavedScene = async (
   savedScene: SavedSceneFile,
 ): Promise<DeleteSavedSceneSummary> => {
+  if (parseWorkspacePath(savedScene.path) || currentWorkspace().treeUri) {
+    await Filesystem.deleteFile({ path: savedScene.path, directory: toNativeStorageDirectory(savedScene.location) });
+    await removeSavedSceneThumbnail(savedScene);
+    await removeCanvasIndexEntry(savedScene);
+    return { deleted: 1, locations: [savedScene.location] };
+  }
   const summary = await deleteSceneCopiesByName(
     savedScene.name,
     savedScene.location,
@@ -2065,7 +2082,7 @@ export const createBackupZip = async (): Promise<SavedExport> => {
     app: "Escalidraw",
     version: 1,
     createdAt: new Date().toISOString(),
-    root: "Documents/Excalidraw",
+    root: currentWorkspace().treeUri ? "Selected local workspace/Excalidraw" : "Documents/Excalidraw",
     files: files.map((file) => ({
       path: file.entryName,
       size: file.data.length,
@@ -2257,6 +2274,7 @@ export const restoreBackupZip = async (
 export const loadAppBootstrap = async (
   pendingOpen: PendingOpenPayload | null,
 ): Promise<BootstrapState> => {
+  await initializeWorkspace();
   await ensureUserStorageDirectories({ migrateLegacy: true });
 
   let libraryItems: LibraryItems = [];

@@ -52,3 +52,27 @@ stays awake for 120 s after the last contact; hovering, mouse and finger do not
 extend it. Background, disable or rotate/recreate: no stale window flag; resume
 requires new contact. Verify against a short system screen timeout. The Activity
 flag is used without wake-lock permission or a global timeout change.
+
+## Feature 4: local workspace
+
+Commit subject: Add persistent local document-tree workspaces.
+
+- Pick a local internal-storage folder and an SD card folder. Correct: an
+  Excalidraw subtree is used, selection persists, cloud providers are rejected.
+- Cancel the picker, reset to default, then re-select the old root. Correct:
+  files stay in place, original canvas IDs/pins/versions remain distinct across
+  roots, no accidental migration or deletion of same-named files elsewhere.
+- Save/overwrite/rename/duplicate/delete, import scene/library/image, PNG/SVG/PDF
+  export, share and backup/restore in airplane mode. Correct: each operation uses
+  the displayed workspace; sharing preserves the original in the folder.
+- Revoke the grant or remove the SD card. Correct: access fails visibly, private
+  autosave remains usable, writes never silently go to another root. Re-select
+  the folder/reinsert the card to recover.
+- On a disposable profile, kill during replacement, fill the card, interrupt I/O
+  and reopen. Correct: journal recovery preserves the previous or committed file;
+  no directory collision deletes a folder. See WORKSPACES.md for durability and
+  pre-journal temp-file limits. Test large files for memory and provider latency.
+
+Emulator evidence covers selection, cancel, persistence, basic save/exports,
+journal recovery and collision safety; physical/removable-media acceptance is
+still required. Writing timeout implementation commit: 6dfaa67e.

@@ -187,3 +187,44 @@ was supplied per command because the requested bare Gradle invocation failed.
   enqueued for every point. Pause, destruction and disabling clear the flag.
 - Pure JVM policy test covers opt-in, last-contact extension, expiry and resume.
   tsc, lint, web build, Java compile, JVM and existing pure tests pass.
+
+## Feature 4: local document-tree workspace
+
+- Added Android local folder selection with persistent read/write grants, reset
+  to default, current-folder labels, cancellation and unavailable-access status.
+  EXTRA_LOCAL_ONLY is reinforced by a native external-storage-provider allowlist.
+- Public paths carry their root URI. Existing default paths/private data remain
+  intact; no migration or automatic copying when switching. Rename preserves
+  canvas identity; deletion is scoped to the actual file/root.
+- Workspace writes stage, verify size and commit a synchronous per-root journal
+  before renaming. Recovery restores the previous file if target is missing,
+  otherwise completes cleanup. Directory collisions never recursively delete.
+- Read/write ceiling: 64 MiB per file; segment limit: 200 characters. Full-file
+  transfer still costs memory and is not a peak-heap guarantee. Orphan temp files
+  from kills before journaling are a documented residual limitation.
+- Shares use a bounded app-cache file copy because Capacitor 5 rejects content
+  URIs. Prior grants are retained for old file references; reset does not revoke.
+- API 36 emulator, airplane mode=1/Wi-Fi disabled: chooser granted a dedicated
+  Documents/ExcaliburWorkspaceTest root. UI label updated; scene save produced a
+  1498-byte canvas in that root. PNG/SVG/PDF exports: 1917/1826/30317 bytes.
+  Selection and canvas identity survive process restart.
+- Four initial Android tests passed, including recovery at both transaction
+  boundaries and folder collision safety. Native provider/grant rejection test
+  added afterward. Pure workspace path and JVM path validation tests pass.
+- Native synthetic stylus contact activates KEEP_SCREEN_ON. It was absent at a
+  later 196 s observation (120 s policy boundary is unit-tested), and cleared
+  immediately on opening the folder picker. Resume without contact stays clear.
+  Picker cancellation returned cancelled=true and preserved the old root.
+- Further emulator checks: a 37619-byte backup was created in the selected root;
+  restore retained the original canvas and created a suffixed copy. Rename kept
+  the original canvas ID (the existing filename sanitizer changes spaces to '-').
+  Reset returned the UI/native selection to default Documents without moving files.
+- Preparing a cached share returns a file URI accepted by the existing share
+  flow; the share attempt was cancelled and no recipient was selected.
+- Picker status/recovery I/O stays on the bridge worker, including cancellation;
+  only Activity launch and window flags run on the UI thread.
+- An initial workspace-path regex failed ESLint's control-regex rule; replaced it
+  with character-code validation. All subsequent lint runs pass.
+- Tests use the existing emulator, already in airplane mode with Wi-Fi disabled;
+  no network permission or radio configuration was changed for these features.
+  No physical S Pen, SD card power-loss test or peak-heap measurement is claimed.

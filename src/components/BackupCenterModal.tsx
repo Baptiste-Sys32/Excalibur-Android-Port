@@ -1,6 +1,7 @@
 import { useRef } from "react";
 
 type BackupCenterModalProps = {
+  workspaceLabel: string;
   busy: boolean;
   onClose: () => void;
   onExport: () => void;
@@ -8,6 +9,7 @@ type BackupCenterModalProps = {
 };
 
 export function BackupCenterModal({
+  workspaceLabel,
   busy,
   onClose,
   onExport,
@@ -41,7 +43,7 @@ export function BackupCenterModal({
         <div className="draw-directory-modal-header">
           <div>
             <strong>Backup Center</strong>
-            <p>Documents/Excalidraw/backups</p>
+            <p>{workspaceLabel}/backups</p>
           </div>
           <button className="draw-directory-close" type="button" onClick={onClose}>
             Close
@@ -56,9 +58,9 @@ export function BackupCenterModal({
             onClick={onExport}
           >
             <span className="draw-directory-entry-text">
-              <span className="draw-menu-button-label">Export all backup</span>
+              <span className="draw-menu-button-label">Back up this workspace</span>
               <span className="draw-menu-button-meta">
-                Canvases, libraries, exports, and manifest
+                Canvases, exported libraries, exports and custom templates
               </span>
             </span>
           </button>

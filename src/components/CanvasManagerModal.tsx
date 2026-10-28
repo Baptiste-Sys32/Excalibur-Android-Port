@@ -9,6 +9,7 @@ type CanvasSortMode = "recent" | "name" | "size";
 type CanvasFilterMode = "all" | "pinned";
 
 type CanvasManagerModalProps = {
+  workspaceLabel: string;
   savedScenes: SavedSceneFile[];
   loading: boolean;
   activeTimelineScene: SavedSceneFile | null;
@@ -56,6 +57,7 @@ const formatBytes = (bytes: number) => {
 };
 
 const locationLabel = (savedScene: SavedSceneFile) => {
+  if (savedScene.path.startsWith("saf:")) return "Local workspace/Excalidraw/canvases";
   if (savedScene.location === "documents") {
     return "Documents/Excalidraw/canvases";
   }
@@ -171,6 +173,7 @@ const CanvasRow = memo(function CanvasRow({
 }, areCanvasRowsEqual);
 
 export function CanvasManagerModal({
+  workspaceLabel,
   activeTimelineScene,
   loading,
   onClose,
@@ -238,7 +241,7 @@ export function CanvasManagerModal({
         <div className="draw-directory-modal-header">
           <div>
             <strong>Canvas Manager</strong>
-            <p>Documents/Excalidraw/canvases</p>
+            <p>{workspaceLabel}/canvases</p>
           </div>
           <div className="draw-directory-header-actions">
             <button className="draw-directory-close" type="button" onClick={onRefresh}>

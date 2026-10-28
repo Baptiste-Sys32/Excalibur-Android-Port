@@ -11,6 +11,13 @@ import {
 import type { DrawSettings, StylusButtonAction } from "../lib/persistence";
 
 type DrawMainMenuProps = {
+  workspaceLabel: string;
+  workspaceSelected: boolean;
+  workspaceAvailable: boolean;
+  workspaceBusy: boolean;
+  workspaceSupported: boolean;
+  chooseWorkspace: () => void;
+  resetWorkspace: () => void;
   openCanvas: () => void;
   openFiles: () => void;
   openDirectory: () => void;
@@ -106,6 +113,21 @@ export const DrawMainMenu = memo(function DrawMainMenu(
       <MainMenu.Sub>
         <MainMenu.Sub.Trigger>Canvases</MainMenu.Sub.Trigger>
         <MainMenu.Sub.Content>
+          <MainMenu.ItemCustom>
+            <span className="draw-menu-button-meta">{props.workspaceLabel}{props.workspaceAvailable ? "" : " (unavailable)"}</span>
+          </MainMenu.ItemCustom>
+          <MainMenu.ItemCustom>
+            <button className={menuButtonClassName} type="button"
+              disabled={!props.workspaceSupported || props.workspaceBusy} onClick={props.chooseWorkspace}>
+              <span className="draw-menu-button-label">Choose workspace folder</span>
+              <span className="draw-menu-button-meta">Creates an Excalidraw subfolder. Files stay in place.</span>
+            </button>
+          </MainMenu.ItemCustom>
+          {props.workspaceSelected ? <MainMenu.ItemCustom>
+            <button className={menuButtonClassName} type="button" disabled={props.workspaceBusy} onClick={props.resetWorkspace}>
+              <span className="draw-menu-button-label">Use default Documents folder</span>
+            </button>
+          </MainMenu.ItemCustom> : null}
           <MainMenu.ItemCustom>
             <button className={menuButtonClassName} type="button" onClick={props.openCanvas}>
               <span className="draw-menu-button-label">My canvases</span>

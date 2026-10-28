@@ -1,3 +1,5 @@
+import { chooseWorkspace, resetWorkspace, currentWorkspace, openWorkspaceDirectory, prepareWorkspaceShare } from "./lib/workspace";
+import { displayWorkspacePath } from "./lib/workspacePaths";
 import { setWritingWake } from "./lib/androidBridge";
 import { isLocalNavigation } from "./lib/offline";
 import { App as AppPlugin } from "@capacitor/app";
@@ -31,7 +33,7 @@ import StylusHoverOverlay from "./components/StylusHoverOverlay";
 import { TemplatePickerModal } from "./components/TemplatePickerModal";
 import { shouldInterceptTouch } from "./lib/touchRouting";
 import { useWebBarrelFallback } from "./lib/useWebBarrelFallback";
-import { isNativePlatform } from "./lib/capacitor";
+import { isAndroid, isNativePlatform } from "./lib/capacitor";
 import type { ExportCenterOptions } from "./lib/exports";
 import type { ImportFile, ImportPlan } from "./lib/imports";
 import {
@@ -243,7 +245,7 @@ const shareSavedExport = async (savedExport: SavedExport, title: string) => {
   await Share.share({
     title,
     dialogTitle: title,
-    url: savedExport.uri,
+    url: await prepareWorkspaceShare(savedExport.path, savedExport.uri),
   });
 };
 
@@ -457,6 +459,9 @@ function App() {
   const [bootstrapNotice, setBootstrapNotice] = useState<string | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItems>([]);
   const [recents, setRecents] = useState<SceneSnapshotMeta[]>([]);
+  const [workspaceInfo, setWorkspaceInfo] = useState(currentWorkspace);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const workspaceLabel = workspaceInfo.treeUri ? `${workspaceInfo.name}/Excalidraw` : workspaceInfo.name;
   const [settings, setSettings] = useState<DrawSettings>(DEFAULT_SETTINGS);
   const [sceneName, setSceneName] = useState("Untitled scene");
   const [theme, setTheme] = useState<Theme>("light");
@@ -1955,12 +1960,52 @@ function App() {
     setPageSettingsOpen(true);
   }, []);
 
+  useEffect(() => {
+    if (bootstrapped) setWorkspaceInfo(currentWorkspace());
+  }, [bootstrapped]);
+
+  const changeWorkspace = useCallback(async (useDefault: boolean) => {
+    if (workspaceBusy || backStackRef.current.busy) {
+      showToast("Wait for the current operation to finish");
+      return;
+    }
+    setWorkspaceBusy(true);
+    try {
+      if (!(await persistCurrentScene(true))) {
+        showToast("Autosave failed. Workspace was not changed");
+        return;
+      }
+      const result = useDefault ? await resetWorkspace() : await chooseWorkspace();
+      if (result.cancelled) return;
+      setWorkspaceInfo(result);
+      currentSavedSceneRef.current = null;
+      thumbnailHydrationRef.current += 1;
+      setSavedCanvasFiles([]);
+      setCanvasDirectoryOpen(false);
+      setActiveTimelineScene(null);
+      setCanvasVersions([]);
+      showToast("Workspace changed. Existing files were not moved");
+    } catch {
+      showToast("Could not change workspace. Choose a local writable folder");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }, [workspaceBusy, persistCurrentScene, showToast]);
+
+  const chooseWorkspaceFolder = useCallback(() => { void changeWorkspace(false); }, [changeWorkspace]);
+  const useDefaultWorkspace = useCallback(() => { void changeWorkspace(true); }, [changeWorkspace]);
+
   const openDirectory = useCallback(async () => {
     if (!isNativePlatform) {
       openFiles();
       return;
     }
 
+    if (currentWorkspace().treeUri) {
+      try { await openWorkspaceDirectory(); }
+      catch { showToast("Workspace unavailable. Select the folder again"); }
+      return;
+    }
     const result = await openStorageDirectorySafe();
     if (result.opened) {
       return;
@@ -2166,7 +2211,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch (error) {
       const reason =
@@ -2211,7 +2256,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export the library");
@@ -2243,7 +2288,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export PNG");
@@ -2274,7 +2319,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export SVG");
@@ -2304,7 +2349,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export PDF");
@@ -2843,6 +2888,7 @@ function App() {
 
       {canvasDirectoryOpen ? (
         <CanvasManagerModal
+          workspaceLabel={workspaceLabel}
           activeTimelineScene={activeTimelineScene}
           loading={canvasDirectoryLoading}
           savedScenes={savedCanvasFiles}
@@ -2906,6 +2952,7 @@ function App() {
 
       {backupCenterOpen ? (
         <BackupCenterModal
+          workspaceLabel={workspaceLabel}
           busy={backupBusy}
           onClose={() => setBackupCenterOpen(false)}
           onExport={() => {
@@ -2999,6 +3046,13 @@ function App() {
       >
         <WelcomeScreen />
         <DrawMainMenu
+          workspaceLabel={workspaceLabel}
+          workspaceSelected={!!workspaceInfo.treeUri}
+          workspaceAvailable={workspaceInfo.available}
+          workspaceBusy={workspaceBusy}
+          workspaceSupported={isAndroid}
+          chooseWorkspace={chooseWorkspaceFolder}
+          resetWorkspace={useDefaultWorkspace}
           autosaveMessage={autosaveHealth.message}
           autosaveStatus={formatAutosaveStatus(autosaveHealth.status)}
           exportLibrary={exportLibrary}

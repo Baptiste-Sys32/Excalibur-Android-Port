@@ -67,6 +67,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DrawBridgePlugin.class);
+        registerPlugin(WorkspacePlugin.class);
         super.onCreate(savedInstanceState);
         DrawBridgePlugin.pushPendingOpen(this, getIntent());
     }

@@ -113,3 +113,19 @@ accepts a supported extension OR a JSON/image MIME, rather than a strict allowli
   violates this: copy failures are swallowed and completion is set in finally).
 - Keep old backup archives byte-for-byte readable.
 - Preserve canvas IDs and version associations across storage moves.
+
+## Optional local workspace
+
+Android can remember a user-selected local document tree in native private
+SharedPreferences `excalibur-workspace` (`selected`). Its Excalidraw/ subtree
+replaces the public Documents root until reset; existing roots are not migrated.
+Internal logical paths carry `saf:<encoded-tree-uri>/Excalidraw/...`; canvas keys
+therefore include the root identity without changing existing default keys.
+
+The same native preferences hold a per-root pending replacement journal under
+`transaction:<tree-uri>`. Hidden .excalibur-*.tmp/.previous documents are used
+only during replacement and recovery. Successful writes clean them. A crash
+before journaling may leave an unreferenced temp; no general orphan scan runs.
+These grants/journals are not part of the v1 backup archive. Cache directory
+workspace-shares/ contains disposable sharing copies (five files, 64 MiB maximum).
+See WORKSPACES.md for switching, limits, recovery and revoked-access behavior.

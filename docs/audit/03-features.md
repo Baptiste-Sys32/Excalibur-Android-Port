@@ -1,6 +1,7 @@
 # Daily S Pen feature audit
 
-No new feature is implemented in this work. Rankings favor wrapper/native work
+The original audit added no features. A subsequent user-requested follow-up
+implements proposals 3 and 4; see docs/WORKSPACES.md. Rankings favor wrapper/native work
 that leaves the pinned engine untouched. Effort is an engineering estimate,
 including validation, not a delivery promise.
 
