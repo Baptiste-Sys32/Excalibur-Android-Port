@@ -245,3 +245,8 @@ was supplied per command because the requested bare Gradle invocation failed.
   compilation and four JVM tests pass. Emulator booted in airplane mode with
   Wi-Fi disabled. New identity compatibility is covered by regression tests;
   its full picker-based physical-device acceptance remains on the checklist.
+- Full debug build also passed after the identity fix. Installation was attempted
+  on the API 36 AVD, but the emulator stopped responding to installation and
+  package-manager queries. Stopped the emulator started for this follow-up.
+  Current APK launch and picker identity acceptance are therefore unverified;
+  earlier feature emulator results remain historical, not a new-device pass.
