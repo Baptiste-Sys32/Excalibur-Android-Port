@@ -191,3 +191,16 @@ export const normalizePageSettings = (value: unknown): PageSettings => {
     pageSize: "a4",
   };
 };
+
+// Quantize translation in screen space, with the same rounded zoom used by
+// the overlay. Kept pure so the subpixel alignment bound can be regression-tested.
+export const quantizePageViewport = (viewport: PageViewport): PageViewport => {
+  const zoom = Math.round((viewport.zoom || 1) * 1000) / 1000;
+  return {
+    scrollX: Math.round(viewport.scrollX * zoom) / zoom,
+    scrollY: Math.round(viewport.scrollY * zoom) / zoom,
+    width: Math.round(viewport.width),
+    height: Math.round(viewport.height),
+    zoom,
+  };
+};

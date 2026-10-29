@@ -29,3 +29,5 @@ jobs:
         run: npx tsc -b
       - name: Lint
         run: npm run lint
+      - name: Pure wrapper regression tests
+        run: npm test

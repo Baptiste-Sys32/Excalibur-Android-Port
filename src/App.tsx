@@ -1,3 +1,7 @@
+import { chooseWorkspace, resetWorkspace, currentWorkspace, openWorkspaceDirectory, prepareWorkspaceShare } from "./lib/workspace";
+import { displayWorkspacePath } from "./lib/workspacePaths";
+import { setWritingWake } from "./lib/androidBridge";
+import { isLocalNavigation } from "./lib/offline";
 import { App as AppPlugin } from "@capacitor/app";
 import { Share } from "@capacitor/share";
 import { SplashScreen } from "@capacitor/splash-screen";
@@ -29,7 +33,7 @@ import StylusHoverOverlay from "./components/StylusHoverOverlay";
 import { TemplatePickerModal } from "./components/TemplatePickerModal";
 import { shouldInterceptTouch } from "./lib/touchRouting";
 import { useWebBarrelFallback } from "./lib/useWebBarrelFallback";
-import { isNativePlatform } from "./lib/capacitor";
+import { isAndroid, isNativePlatform } from "./lib/capacitor";
 import type { ExportCenterOptions } from "./lib/exports";
 import type { ImportFile, ImportPlan } from "./lib/imports";
 import {
@@ -43,6 +47,7 @@ import {
   getPageTemplateOption,
   isPageTemplateEnabled,
   normalizePageSettings,
+  quantizePageViewport,
   type PageSettings,
   type PageViewport,
 } from "./lib/pageSettings";
@@ -240,7 +245,7 @@ const shareSavedExport = async (savedExport: SavedExport, title: string) => {
   await Share.share({
     title,
     dialogTitle: title,
-    url: savedExport.uri,
+    url: await prepareWorkspaceShare(savedExport.path, savedExport.uri),
   });
 };
 
@@ -454,6 +459,9 @@ function App() {
   const [bootstrapNotice, setBootstrapNotice] = useState<string | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItems>([]);
   const [recents, setRecents] = useState<SceneSnapshotMeta[]>([]);
+  const [workspaceInfo, setWorkspaceInfo] = useState(currentWorkspace);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const workspaceLabel = workspaceInfo.treeUri ? `${workspaceInfo.name}/Excalidraw` : workspaceInfo.name;
   const [settings, setSettings] = useState<DrawSettings>(DEFAULT_SETTINGS);
   const [sceneName, setSceneName] = useState("Untitled scene");
   const [theme, setTheme] = useState<Theme>("light");
@@ -1341,6 +1349,25 @@ function App() {
     await persistSettings(nextSettings);
   }, []);
 
+  useEffect(() => {
+    if (bootstrapped && isNativePlatform) {
+      void setWritingWake(settings.keepAwakeWhileWriting).catch(() => {
+        showToast("Could not update writing screen timeout");
+      });
+    }
+  }, [bootstrapped, settings.keepAwakeWhileWriting, showToast]);
+
+  const updateWritingWake = useCallback(async (enabled: boolean) => {
+    const next = { ...settingsRef.current, keepAwakeWhileWriting: enabled };
+    try {
+      await persistSettings(next);
+      settingsRef.current = next;
+      setSettings(next);
+    } catch {
+      showToast("Could not save writing screen timeout");
+    }
+  }, [showToast]);
+
   const updatePenHoverRingPreference = useCallback(async (enabled: boolean) => {
     const nextSettings = {
       ...settingsRef.current,
@@ -1555,14 +1582,13 @@ function App() {
       // 15px of visible desync at 30x zoom and makes the guides advance in
       // 30px jumps while panning. Snap the screen-space offset instead and
       // convert back, which keeps the guides glued within a pixel at any zoom.
-      const zoom = Math.round((appState.zoom?.value || 1) * 1000) / 1000;
-      const nextViewport: PageViewport = {
-        scrollX: Math.round(appState.scrollX * zoom) / zoom,
-        scrollY: Math.round(appState.scrollY * zoom) / zoom,
-        width: Math.round(appState.width),
-        height: Math.round(appState.height),
-        zoom,
-      };
+      const nextViewport = quantizePageViewport({
+        scrollX: appState.scrollX,
+        scrollY: appState.scrollY,
+        width: appState.width,
+        height: appState.height,
+        zoom: appState.zoom?.value || 1,
+      });
       pageViewportPendingRef.current = nextViewport;
 
       if (pageViewportRafRef.current === null) {
@@ -1771,7 +1797,11 @@ function App() {
     let cleanup: () => void = () => {};
 
     void register().then((teardown) => {
-      cleanup = teardown;
+      if (disposed) {
+        teardown();
+      } else {
+        cleanup = teardown;
+      }
     });
 
     return () => {
@@ -1930,12 +1960,52 @@ function App() {
     setPageSettingsOpen(true);
   }, []);
 
+  useEffect(() => {
+    if (bootstrapped) setWorkspaceInfo(currentWorkspace());
+  }, [bootstrapped]);
+
+  const changeWorkspace = useCallback(async (useDefault: boolean) => {
+    if (workspaceBusy || backStackRef.current.busy) {
+      showToast("Wait for the current operation to finish");
+      return;
+    }
+    setWorkspaceBusy(true);
+    try {
+      if (!(await persistCurrentScene(true))) {
+        showToast("Autosave failed. Workspace was not changed");
+        return;
+      }
+      const result = useDefault ? await resetWorkspace() : await chooseWorkspace();
+      if (result.cancelled) return;
+      setWorkspaceInfo(result);
+      currentSavedSceneRef.current = null;
+      thumbnailHydrationRef.current += 1;
+      setSavedCanvasFiles([]);
+      setCanvasDirectoryOpen(false);
+      setActiveTimelineScene(null);
+      setCanvasVersions([]);
+      showToast("Workspace changed. Existing files were not moved");
+    } catch {
+      showToast("Could not change workspace. Choose a local writable folder");
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }, [workspaceBusy, persistCurrentScene, showToast]);
+
+  const chooseWorkspaceFolder = useCallback(() => { void changeWorkspace(false); }, [changeWorkspace]);
+  const useDefaultWorkspace = useCallback(() => { void changeWorkspace(true); }, [changeWorkspace]);
+
   const openDirectory = useCallback(async () => {
     if (!isNativePlatform) {
       openFiles();
       return;
     }
 
+    if (currentWorkspace().treeUri) {
+      try { await openWorkspaceDirectory(); }
+      catch { showToast("Workspace unavailable. Select the folder again"); }
+      return;
+    }
     const result = await openStorageDirectorySafe();
     if (result.opened) {
       return;
@@ -2141,7 +2211,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch (error) {
       const reason =
@@ -2186,7 +2256,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export the library");
@@ -2218,7 +2288,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export PNG");
@@ -2249,7 +2319,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export SVG");
@@ -2279,7 +2349,7 @@ function App() {
       showToast(
         savedExport.downloaded
           ? `Downloaded ${savedExport.filename}`
-          : `Saved to ${savedExport.path}`,
+          : `Saved to ${displayWorkspacePath(savedExport.path)}`,
       );
     } catch {
       showToast("Could not export PDF");
@@ -2818,6 +2888,7 @@ function App() {
 
       {canvasDirectoryOpen ? (
         <CanvasManagerModal
+          workspaceLabel={workspaceLabel}
           activeTimelineScene={activeTimelineScene}
           loading={canvasDirectoryLoading}
           savedScenes={savedCanvasFiles}
@@ -2881,6 +2952,7 @@ function App() {
 
       {backupCenterOpen ? (
         <BackupCenterModal
+          workspaceLabel={workspaceLabel}
           busy={backupBusy}
           onClose={() => setBackupCenterOpen(false)}
           onExport={() => {
@@ -2947,6 +3019,14 @@ function App() {
         onExcalidrawAPI={setApi}
         onChange={handleChange}
         onLibraryChange={handleLibraryChange}
+        aiEnabled={false}
+        validateEmbeddable={false}
+        onLinkOpen={(element, event) => {
+          if (!isLocalNavigation(element.link ?? "", window.location.href)) {
+            event.preventDefault();
+            showToast("External links are unavailable offline");
+          }
+        }}
         autoFocus
         handleKeyboardGlobally
         UIOptions={{
@@ -2966,6 +3046,13 @@ function App() {
       >
         <WelcomeScreen />
         <DrawMainMenu
+          workspaceLabel={workspaceLabel}
+          workspaceSelected={!!workspaceInfo.treeUri}
+          workspaceAvailable={workspaceInfo.available}
+          workspaceBusy={workspaceBusy}
+          workspaceSupported={isAndroid}
+          chooseWorkspace={chooseWorkspaceFolder}
+          resetWorkspace={useDefaultWorkspace}
           autosaveMessage={autosaveHealth.message}
           autosaveStatus={formatAutosaveStatus(autosaveHealth.status)}
           exportLibrary={exportLibrary}
@@ -3001,6 +3088,7 @@ function App() {
           toggleTheme={toggleTheme}
           toggleViewMode={toggleViewMode}
           toggleZenMode={toggleZenMode}
+          updateWritingWake={updateWritingWake}
           updatePenMode={updatePenMode}
           updatePenHoverRingPreference={updatePenHoverRingPreference}
           updatePenOnlyTouchNeverDraws={updatePenOnlyTouchNeverDraws}

@@ -1,5 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 
+import { isFreshStylusSample } from "../lib/stylusSample";
+
 import type { NativeStylusSnapshot } from "../lib/androidBridge";
 
 type StylusHoverOverlayProps = {
@@ -31,7 +33,7 @@ function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
 
   useEffect(() => {
     const root = rootRef.current;
-    if (!root) {
+    if (!enabled || !root) {
       return;
     }
 
@@ -48,11 +50,11 @@ function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
         }
 
         const snapshot = getSampleRef.current();
+        const freshSnapshot = snapshot && isFreshStylusSample(snapshot.timestamp, Date.now())
+          ? snapshot : null;
         const pressure =
-          snapshot &&
-          snapshot.pointerType === "pen" &&
-          Date.now() - snapshot.timestamp < 300
-            ? snapshot.pressure
+          freshSnapshot?.pointerType === "pen"
+            ? freshSnapshot.pressure
             : sample.pressure;
         const clamped = Math.min(1, Math.max(0, pressure || 0.5));
         const diameter = 10 + clamped * 18;
@@ -61,7 +63,7 @@ function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
         node.style.setProperty("--hover-diameter", `${diameter.toFixed(1)}px`);
         node.style.setProperty("--hover-opacity", (0.35 + clamped * 0.55).toFixed(2));
         node.dataset.tool =
-          snapshot?.toolType === "eraser" ? "eraser" : "pen";
+          freshSnapshot?.toolType === "eraser" ? "eraser" : "pen";
       });
     };
 
@@ -73,10 +75,7 @@ function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
         window.clearTimeout(hideTimerRef.current);
       }
       hideTimerRef.current = window.setTimeout(() => {
-        const snapshot = getSampleRef.current();
-        if (!snapshot?.hovering) {
-          hide();
-        }
+        hide();
       }, HIDE_AFTER_MS);
     };
 
@@ -120,6 +119,8 @@ function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
     window.addEventListener("blur", onPointerLeave);
 
     return () => {
+      sampleRef.current = null;
+      hide();
       host.removeEventListener("pointermove", onPointerMove as EventListener);
       host.removeEventListener("pointerleave", onPointerLeave);
       host.removeEventListener("pointercancel", onPointerLeave);
@@ -134,7 +135,7 @@ function StylusHoverOverlay({ getSample, enabled }: StylusHoverOverlayProps) {
         hideTimerRef.current = null;
       }
     };
-  }, []);
+  }, [enabled]);
 
   if (!enabled) {
     return null;

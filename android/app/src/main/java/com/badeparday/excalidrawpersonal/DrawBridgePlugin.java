@@ -45,6 +45,7 @@ public class DrawBridgePlugin extends Plugin {
     private static final ArrayDeque<JSObject> pendingOpenQueue = new ArrayDeque<>();
     private static final int MAX_PENDING_OPEN_QUEUE = 10;
     private static long pendingOpenSequence = 0;
+    private static long pendingOpenBytes = 0;
     private static JSObject latestStylusSnapshot;
     private static final long STYLUS_MIN_INTERVAL_MS = 32;
     private static long lastStylusEmitTime = 0;
@@ -69,10 +70,21 @@ public class DrawBridgePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setWritingWake(PluginCall call) {
+        boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+        getActivity().runOnUiThread(() -> {
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).setWritingWakeEnabled(enabled);
+                call.resolve();
+            } else call.reject("Writing wake is unavailable");
+        });
+    }
+
+    @PluginMethod
     public void getPendingOpen(PluginCall call) {
         JSObject result = new JSObject();
         synchronized (LOCK) {
-            JSObject pendingOpen = pendingOpenQueue.pollFirst();
+            JSObject pendingOpen = pollPendingOpen();
             if (pendingOpen != null) {
                 result.put("pendingOpen", pendingOpen);
             }
@@ -84,6 +96,7 @@ public class DrawBridgePlugin extends Plugin {
     public void clearPendingOpen(PluginCall call) {
         synchronized (LOCK) {
             pendingOpenQueue.clear();
+            pendingOpenBytes = 0;
         }
         call.resolve();
     }
@@ -296,8 +309,20 @@ public class DrawBridgePlugin extends Plugin {
         }
     }
 
+    private static JSObject pollPendingOpen() {
+        JSObject payload = pendingOpenQueue.pollFirst();
+        if (payload != null) pendingOpenBytes -= payload.optLong("totalBytes");
+        return payload;
+    }
+
     public static void pushPendingOpen(Context context, Intent intent) {
-        JSObject payload = buildPendingOpenPayload(context, intent);
+        JSObject payload;
+        try {
+            payload = buildPendingOpenPayload(context, intent);
+        } catch (RuntimeException exception) {
+            // Malformed parcel extras or a hostile provider must not crash the Activity.
+            return;
+        }
         if (payload == null) {
             return;
         }
@@ -307,15 +332,17 @@ public class DrawBridgePlugin extends Plugin {
             payload.put("id", "pending-open-" + pendingOpenSequence);
             payload.put("receivedAt", System.currentTimeMillis());
 
-            while (pendingOpenQueue.size() >= MAX_PENDING_OPEN_QUEUE) {
-                pendingOpenQueue.pollFirst();
+            while (pendingOpenQueue.size() >= MAX_PENDING_OPEN_QUEUE
+                || pendingOpenBytes + payload.optLong("totalBytes") > ImportPolicy.MAX_TOTAL_BYTES) {
+                pollPendingOpen();
             }
             pendingOpenQueue.addLast(payload);
+            pendingOpenBytes += payload.optLong("totalBytes");
 
             if (instance != null) {
                 JSObject event = new JSObject();
                 event.put("pendingOpen", payload);
-                instance.notifyListeners("intentOpen", event, true);
+                instance.notifyListeners("intentOpen", event, false);
             }
         }
     }
@@ -396,14 +423,24 @@ public class DrawBridgePlugin extends Plugin {
 
         JSArray files = new JSArray();
         JSObject firstPayload = null;
+        long totalBytes = 0;
+        int attemptedFiles = 0;
 
         for (Uri pendingUri : uris) {
+            if (attemptedFiles++ >= ImportPolicy.MAX_FILES) break;
+            if (pendingUri == null) continue;
             JSObject filePayload = buildPendingFilePayload(context, pendingUri);
             if (filePayload == null) {
                 continue;
             }
+            if (!ImportPolicy.fits(files.length(), totalBytes, filePayload.optLong("size"))) continue;
+            totalBytes += filePayload.optLong("size");
             if (firstPayload == null) {
-                firstPayload = filePayload;
+                // Separate envelope: the files array must never contain its parent.
+                firstPayload = new JSObject();
+                for (String key : new String[] {"name", "mimeType", "encoding", "size", "data"}) {
+                    firstPayload.put(key, filePayload.opt(key));
+                }
             }
             files.put(filePayload);
         }
@@ -412,6 +449,7 @@ public class DrawBridgePlugin extends Plugin {
             return null;
         }
 
+        firstPayload.put("totalBytes", totalBytes);
         firstPayload.put(
             "action",
             Intent.ACTION_VIEW.equals(action) ? "view" : "send"
@@ -469,7 +507,7 @@ public class DrawBridgePlugin extends Plugin {
             );
 
             return payload;
-        } catch (IOException exception) {
+        } catch (IOException | RuntimeException exception) {
             return null;
         }
     }
@@ -626,9 +664,7 @@ public class DrawBridgePlugin extends Plugin {
             return null;
         }
 
-        String cleaned = name.replace('\\', '/');
-        cleaned = cleaned.substring(cleaned.lastIndexOf('/') + 1).trim();
-        return cleaned.isEmpty() ? null : cleaned;
+        return ImportPolicy.displayName(name);
     }
 
     private static boolean isSupportedImport(String name, String mimeType) {

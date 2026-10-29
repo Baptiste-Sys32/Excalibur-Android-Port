@@ -919,3 +919,14 @@ html[data-app-theme="dark"] .draw-stylus-hover-dot {
   padding: 0 0.75rem;
   font-size: 1rem;
 }
+
+/* Upstream online affordances have no role in this offline wrapper.
+   The publish item has this misleading test id in the pinned upstream source;
+   the local Remove item does not have it. Review when upgrading the engine. */
+.excalidraw .library-menu-browse-button,
+.excalidraw [data-testid="lib-dropdown--remove"],
+.excalidraw .HelpDialog__header,
+.excalidraw a[href^="https://"],
+.excalidraw a[href^="http://"] {
+  display: none !important;
+}
