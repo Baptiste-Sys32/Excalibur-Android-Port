@@ -76,3 +76,13 @@ Commit subject: Add persistent local document-tree workspaces.
 Emulator evidence covers selection, cancel, persistence, basic save/exports,
 journal recovery and collision safety; physical/removable-media acceptance is
 still required. Writing timeout implementation commit: 6dfaa67e.
+
+## Follow-up identity compatibility
+
+Workspace implementation: 8faed1a8; writing timeout: 6dfaa67e. Follow-up subject:
+Preserve canvas identity across default Documents access methods.
+Select primary Documents as a workspace for an existing default-folder canvas,
+then switch back. Correct: the same canvas ID, pin and versions remain available;
+other folders with the same filename retain separate identities. Previously
+conflicting IDs are not silently merged. Test physical storage removal and
+permission revocation with a verified backup as described above.

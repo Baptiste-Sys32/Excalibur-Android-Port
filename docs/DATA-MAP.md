@@ -129,3 +129,9 @@ before journaling may leave an unreferenced temp; no general orphan scan runs.
 These grants/journals are not part of the v1 backup archive. Cache directory
 workspace-shares/ contains disposable sharing copies (five files, 64 MiB maximum).
 See WORKSPACES.md for switching, limits, recovery and revoked-access behavior.
+
+Default Documents compatibility: the primary Documents SAF tree and the legacy
+Documents backend address the same files. Index lookup reuses an existing entry
+in either direction and chooses the legacy key for a new entry in this shared
+root. Other roots stay separate. Existing conflicting IDs are preserved rather
+than merged or discarded. No index-key rewrite or file migration is performed.

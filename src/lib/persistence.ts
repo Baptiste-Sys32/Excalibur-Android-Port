@@ -1,5 +1,5 @@
 import { Filesystem, currentWorkspace, publicStorageRoot, initializeWorkspace, writeWorkspaceFile } from "./workspace";
-import { parseWorkspacePath } from "./workspacePaths";
+import { parseWorkspacePath, resolveCanvasIndexKey } from "./workspacePaths";
 import { Directory, Encoding } from "@capacitor/filesystem";
 import { Preferences } from "@capacitor/preferences";
 import {
@@ -1171,7 +1171,7 @@ const ensureCanvasIdInIndex = (
   index: CanvasIndex,
   savedScene: SavedSceneFile,
 ): CanvasIndexUpdate<string> => {
-  const key = savedSceneKey(savedScene);
+  const key = resolveCanvasIndexKey(savedScene.location, savedScene.path, index);
   const existingEntry = index[key];
 
   if (existingEntry?.id) {
@@ -1225,7 +1225,7 @@ const resolveCanvasIndexEntry = async (savedScene: SavedSceneFile) =>
       index,
       savedScene,
     );
-    const entry = index[savedSceneKey(savedScene)] ?? {
+    const entry = index[resolveCanvasIndexKey(savedScene.location, savedScene.path, index)] ?? {
       id: canvasId,
       name: savedScene.name,
       path: savedScene.path,
@@ -1240,8 +1240,8 @@ const updateCanvasIndexForRename = async (
   toScene: SavedSceneFile,
 ) =>
   updateCanvasIndex((index) => {
-    const fromKey = savedSceneKey(fromScene);
-    const toKey = savedSceneKey(toScene);
+    const fromKey = resolveCanvasIndexKey(fromScene.location, fromScene.path, index);
+    const toKey = resolveCanvasIndexKey(toScene.location, toScene.path, index);
     const existingEntry = index[fromKey];
     const id = existingEntry?.id ?? makeStableId();
 
@@ -1259,7 +1259,7 @@ const updateCanvasIndexForRename = async (
 
 const removeCanvasIndexEntry = async (savedScene: SavedSceneFile) =>
   updateCanvasIndex((index) => {
-    delete index[savedSceneKey(savedScene)];
+    delete index[resolveCanvasIndexKey(savedScene.location, savedScene.path, index)];
     return { result: undefined, dirty: true };
   });
 
@@ -1335,7 +1335,7 @@ export const setSavedScenePinned = async (
   pinned: boolean,
 ) =>
   updateCanvasIndex((index) => {
-    const key = savedSceneKey(savedScene);
+    const key = resolveCanvasIndexKey(savedScene.location, savedScene.path, index);
     const existingEntry = index[key] ?? {
       id: savedScene.canvasId || makeStableId(),
       name: savedScene.name,

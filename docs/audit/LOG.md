@@ -228,3 +228,20 @@ was supplied per command because the requested bare Gradle invocation failed.
 - Tests use the existing emulator, already in airplane mode with Wi-Fi disabled;
   no network permission or radio configuration was changed for these features.
   No physical S Pen, SD card power-loss test or peak-heap measurement is claimed.
+
+## Follow-up, 2026-10-29
+
+- Resumed from clean 8faed1a8, which committed the workspace files left on disk
+  during the previous interruption. Preserve that commit and its source changes.
+- Found the primary Documents SAF tree could assign a new ID to the same canvas
+  already indexed by the legacy Documents backend. Added lookup compatibility in
+  both directions. Existing keys and conflicting histories are not rewritten or
+  merged; other roots remain independent. Rename, pin and removal use the same
+  lookup. Added two pure regression tests; all eleven pure tests pass.
+- Starting the existing API 36 AVD for current-source device regression tests;
+  no physical S Pen is attached. Full builds and Android tests are being repeated
+  because temporary logs and running emulator state did not survive interruption.
+- Current-source verification: eleven pure tests, tsc, lint, web build, Java
+  compilation and four JVM tests pass. Emulator booted in airplane mode with
+  Wi-Fi disabled. New identity compatibility is covered by regression tests;
+  its full picker-based physical-device acceptance remains on the checklist.

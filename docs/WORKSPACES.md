@@ -23,9 +23,14 @@ previous workspace to see its canvases again. The current drawing is privately
 autosaved before switching, and can then be explicitly saved into the new root.
 
 Autosave, recovery, the canonical library, templates and version history remain
-app-private. Public canvas identities include their tree URI and relative path,
-so identical filenames in different workspaces do not share a canvas ID or
-thumbnail/version association. Renaming a canvas preserves its ID. External
+app-private. Public canvas identities distinguish separate physical roots, so
+identical filenames in different workspaces do not share history. Selecting the
+primary Documents tree addresses the same files as the default Documents folder:
+existing canvas IDs, pins and version associations are reused in either direction.
+Previously stored keys are kept; keys and histories are not bulk migrated. If two
+different IDs already exist for that same file, each backend retains its existing
+entry until an explicit history reconciliation. Thumbnail caches can regenerate
+when switching backend. Renaming a canvas preserves its ID. External
 renaming/removal of a root or SD card can invalidate Android's document IDs;
 re-select the folder if unavailable. The app does not silently redirect writes
 into a different workspace when a grant fails.
